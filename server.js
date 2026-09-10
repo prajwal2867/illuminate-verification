@@ -196,7 +196,7 @@ async function handleRegistration(request, response) {
 }
 
 function serveStatic(request, response) {
-  const requestedPath = request.url === '/' ? '/index.html' : request.url.split('?')[0];
+  const requestedPath = request.url === '/' ? '/index.html' : decodeURIComponent(request.url.split('?')[0]);
   const filePath = normalize(join(rootDirectory, requestedPath));
   if (!filePath.startsWith(rootDirectory) || !existsSync(filePath)) {
     sendError(response, 404, 'Not found.');

@@ -108,7 +108,9 @@ form.addEventListener('submit', async (event) => {
     qrResult.hidden = true;
     getQrCodeButton.hidden = false;
     registrationPanel.hidden = true;
+    successPanel.classList.remove('is-visible');
     successPanel.hidden = false;
+    requestAnimationFrame(() => successPanel.classList.add('is-visible'));
     document.title = 'Registration Successful | Illuminate Verification';
     successPanel.querySelector('#success-title').focus();
   } catch {
