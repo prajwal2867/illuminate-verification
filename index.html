@@ -126,53 +126,64 @@
     <section class="dashboard" id="admin-dashboard" hidden aria-labelledby="dashboard-title">
       <header class="dashboard-header">
         <div>
-          <p class="eyebrow">Illuminate verification</p>
+          <p class="eyebrow">Illuminate control room</p>
           <h2 id="dashboard-title">Welcome, <span id="admin-name">Test Admin</span>!</h2>
-          <p class="dashboard-subtitle">Manage registrations and verify event passes from one place.</p>
+          <p class="dashboard-subtitle">Review complete registration records and verify event passes.</p>
         </div>
         <button class="dashboard-logout" id="admin-logout" type="button">Log out</button>
       </header>
 
       <div class="dashboard-toggle" role="tablist" aria-label="Dashboard views">
         <button class="dashboard-tab is-active" id="registrations-tab" type="button" role="tab" aria-selected="true" aria-controls="registrations-view">Registrations</button>
-        <button class="dashboard-tab" id="scanner-tab" type="button" role="tab" aria-selected="false" aria-controls="scanner-view">QR Scanner</button>
+        <button class="dashboard-tab" id="scanner-tab" type="button" role="tab" aria-selected="false" aria-controls="scanner-view">Verify entry</button>
       </div>
 
       <div class="dashboard-view" id="registrations-view" role="tabpanel" aria-labelledby="registrations-tab">
         <div class="dashboard-view-heading">
           <div>
             <p class="view-kicker">Live overview</p>
-            <h3>Recent registrations</h3>
+            <h3>Current registrations</h3>
           </div>
-          <span class="record-count">3 records</span>
+          <span class="record-count" id="record-count">0 records</span>
         </div>
+        <p class="dashboard-status" id="registrations-status" role="status" aria-live="polite"></p>
         <div class="registration-table-wrap">
           <table class="registration-table">
             <thead>
-              <tr><th>Attendee</th><th>Illuminate ID</th><th>Status</th></tr>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone number</th>
+                <th>Illuminate ID</th>
+                <th>QR code</th>
+                <th>Pass ID</th>
+                <th>Actions</th>
+              </tr>
             </thead>
-            <tbody>
-              <tr><td><strong>Aarav Sharma</strong><span>aarav@example.com</span></td><td>ILL-2048</td><td><span class="status-badge status-verified">Verified</span></td></tr>
-              <tr><td><strong>Maya Patel</strong><span>maya@example.com</span></td><td>ILL-2051</td><td><span class="status-badge status-pending">Pending</span></td></tr>
-              <tr><td><strong>Rohan Mehta</strong><span>rohan@example.com</span></td><td>ILL-2054</td><td><span class="status-badge status-verified">Verified</span></td></tr>
-            </tbody>
+            <tbody id="registrations-body"></tbody>
           </table>
         </div>
       </div>
 
       <div class="dashboard-view" id="scanner-view" role="tabpanel" aria-labelledby="scanner-tab" hidden>
         <div class="scanner-panel">
-          <div class="scanner-frame" aria-hidden="true"><span></span></div>
+          <div class="scanner-camera-wrap">
+            <video class="scanner-video" id="scanner-video" playsinline muted hidden></video>
+            <div class="scanner-frame" id="scanner-frame" aria-hidden="true"><span></span></div>
+            <p class="scanner-camera-status" id="scanner-camera-status">Camera scanning is available on supported browsers.</p>
+          </div>
           <div class="scanner-copy">
             <p class="view-kicker">Entry verification</p>
-            <h3>Scan an event pass</h3>
-            <p>Position a registrant's QR code inside the frame to verify their pass.</p>
-            <label for="manual-pass">Or enter a pass ID</label>
+            <h3>Verify an event pass</h3>
+            <p>Scan a QR code or enter the Pass ID shown in the registrations table.</p>
+            <button class="scan-button camera-button" id="start-camera" type="button">Start camera scanner</button>
+            <label for="manual-pass">Pass ID</label>
             <div class="manual-pass-row">
-              <input id="manual-pass" type="text" placeholder="e.g. ILL-2048" />
+              <input id="manual-pass" type="text" autocomplete="off" placeholder="e.g. PASS-A1B2C3D4" />
               <button class="scan-button" id="verify-pass" type="button">Verify</button>
             </div>
             <p class="scanner-status" id="scanner-status" role="status" aria-live="polite"></p>
+            <div class="verification-details" id="verification-details" hidden></div>
           </div>
         </div>
       </div>

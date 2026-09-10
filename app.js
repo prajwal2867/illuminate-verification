@@ -88,14 +88,9 @@ form.addEventListener('submit', async (event) => {
     return;
   }
 
-  submitButton.disabled = true;
-  submitButton.setAttribute('aria-busy', 'true');
-  statusMessage.textContent = 'Creating your event pass...';
-
   try {
     const response = await fetch(`${apiBase}/api/events/illuminate-2026/registrations`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: fields.name.input.value,
         email: fields.email.input.value,
@@ -268,7 +263,7 @@ function renderRegistrations(registrations) {
   if (!registrations.length) {
     const row = document.createElement('tr');
     const cell = createCell('No current registrations.', 'empty-table-message');
-    cell.colSpan = 4;
+    cell.colSpan = 7;
     row.appendChild(cell);
     registrationsBody.appendChild(row);
     return;
@@ -276,44 +271,41 @@ function renderRegistrations(registrations) {
   registrations.forEach((registration) => {
     const row = document.createElement('tr');
     row.dataset.registrationId = registration.id;
-    const attendeeCell = document.createElement('td');
     const name = document.createElement('strong');
     name.textContent = registration.name;
-    const contact = document.createElement('span');
-    contact.textContent = registration.email;
-    attendeeCell.append(name, contact);
-    row.append(attendeeCell, createCell(registration.illuminateId), createCell(registration.passId));
+    const nameCell = document.createElement('td');
+    nameCell.appendChild(name);
+    const emailCell = createCell(registration.email);
+    emailCell.className = 'registration-email';
+    const phoneCell = createCell(registration.phone);
+    phoneCell.className = 'registration-phone';
+    const illuminateIdCell = createCell(registration.illuminateId);
+    illuminateIdCell.className = 'registration-code';
+    const qrCell = document.createElement('td');
+    qrCell.className = 'registration-qr-cell';
+    const qrImage = document.createElement('img');
+    qrImage.className = 'registration-qr-image';
+    qrImage.src = registration.qrDataUrl;
+    qrImage.alt = `QR code for ${registration.name}`;
+    qrCell.appendChild(qrImage);
+    const passCell = createCell(registration.passId);
+    passCell.className = 'registration-code';
+    row.append(nameCell, emailCell, phoneCell, illuminateIdCell, qrCell, passCell);
     const actionsCell = document.createElement('td');
     actionsCell.className = 'registration-actions';
-    const viewButton = document.createElement('button');
-    viewButton.className = 'table-action';
-    viewButton.type = 'button';
-    viewButton.textContent = 'View details';
     const removeButton = document.createElement('button');
     removeButton.className = 'table-action table-action-danger';
     removeButton.type = 'button';
     removeButton.textContent = 'Remove fraud';
-    actionsCell.append(viewButton, removeButton);
+    actionsCell.appendChild(removeButton);
     row.appendChild(actionsCell);
-    const detailRow = document.createElement('tr');
-    detailRow.hidden = true;
-    viewButton.addEventListener('click', () => {
-      detailRow.hidden = !detailRow.hidden;
-      if (!detailRow.hidden) {
-        renderRegistrationDetails(registration, detailRow);
-      }
-      viewButton.textContent = detailRow.hidden ? 'View details' : 'Hide details';
-    });
     removeButton.addEventListener('click', async () => {
-      const reason = window.prompt(`Why should ${registration.name}'s registration be removed?`, 'Fraudulent registration');
-      if (!reason) {
-        return;
-      }
       removeButton.disabled = true;
+      removeButton.textContent = 'Removing...';
       const response = await fetch(`${apiBase}/api/admin/registrations/${registration.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason })
+        body: JSON.stringify({ reason: 'Removed by administrator' })
       });
       if (response.ok) {
         loadRegistrations();
@@ -321,9 +313,10 @@ function renderRegistrations(registrations) {
         const result = await response.json();
         registrationsStatus.textContent = result.error || 'Registration could not be removed.';
         removeButton.disabled = false;
+        removeButton.textContent = 'Remove fraud';
       }
     });
-    registrationsBody.append(row, detailRow);
+    registrationsBody.appendChild(row);
   });
 }
 

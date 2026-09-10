@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import QRCode from 'qrcode';
 
@@ -15,8 +15,10 @@ const maxBodyBytes = 12_000;
 const registrationWindowMs = 60_000;
 const registrationAttempts = new Map();
 const sessions = new Map();
-const adminEmail = process.env.ADMIN_EMAIL || 'test@example.com';
-const adminPassword = process.env.ADMIN_PASSWORD || '28672867';
+const PREDEFINED_ADMIN_ACCOUNTS = [
+  { email: 'test@example.com', password: '28672867', name: 'Test Admin' }
+  // Add the remaining authorized admin accounts here when they are provided.
+];
 const encryptionKey = createHash('sha256')
   .update(process.env.PASS_ENCRYPTION_KEY || 'local-development-pass-encryption-key')
   .digest();
@@ -276,19 +278,20 @@ async function handleAdminLogin(request, response) {
   }
   const email = String(input.email || '').trim().toLowerCase();
   const password = String(input.password || '');
-  const emailMatch = email === adminEmail.toLowerCase();
-  const passwordMatch = timingSafeEqual(
-    createHash('sha256').update(password).digest(),
-    createHash('sha256').update(adminPassword).digest()
-  );
-  if (!emailMatch || !passwordMatch) {
+  const account = PREDEFINED_ADMIN_ACCOUNTS.find((item) => item.email.toLowerCase() === email);
+  const submittedPasswordHash = createHash('sha256').update(password).digest();
+  const configuredPasswordHash = createHash('sha256')
+    .update(account?.password || randomBytes(32).toString('hex'))
+    .digest();
+  const passwordMatch = timingSafeEqual(submittedPasswordHash, configuredPasswordHash);
+  if (!account || !passwordMatch) {
     sendError(response, 401, 'Those admin credentials are not recognized.');
     return;
   }
   const sessionId = randomBytes(32).toString('base64url');
-  sessions.set(sessionId, { name: 'Event Administrator', expiresAt: Date.now() + 8 * 60 * 60 * 1000 });
+  sessions.set(sessionId, { name: account.name, expiresAt: Date.now() + 8 * 60 * 60 * 1000 });
   setSessionCookie(response, sessionId);
-  sendJson(response, 200, { name: 'Event Administrator' });
+  sendJson(response, 200, { name: account.name });
 }
 
 function handleAdminLogout(request, response) {
