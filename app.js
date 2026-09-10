@@ -29,13 +29,15 @@ const qrCode = document.querySelector('#qr-code');
 const qrPassId = document.querySelector('#qr-pass-id');
 const downloadQrButton = document.querySelector('#download-qr-code');
 const submitButton = form.querySelector('button[type="submit"]');
-const apiBase = window.EVENT_API_BASE || (
-  ['localhost', '127.0.0.1'].includes(window.location.hostname)
-    && window.location.port
-    && window.location.port !== '3000'
-    ? 'http://localhost:3000'
-    : ''
-);
+const apiBase = window.EVENT_API_BASE || (() => {
+  if (window.location.protocol === 'file:') {
+    return 'http://localhost:3000';
+  }
+  if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+    return window.location.port === '3000' ? '' : 'http://localhost:3000';
+  }
+  return '';
+})();
 
 let registrationQrDataUrl = '';
 
@@ -103,7 +105,7 @@ form.addEventListener('submit', async (event) => {
         illuminateId: fields.illuminateId.input.value
       })
     });
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
 
     if (!response.ok) {
       statusMessage.textContent = result.error || 'Registration could not be completed.';
@@ -214,7 +216,7 @@ adminLoginForm.addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email.value, password: password.value })
     });
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
     if (!response.ok) {
       adminStatus.textContent = result.error || 'Those admin credentials are not recognized.';
       password.setAttribute('aria-invalid', 'true');
@@ -224,8 +226,10 @@ adminLoginForm.addEventListener('submit', async (event) => {
     document.querySelector('#admin-name').textContent = result.name;
     adminLoginForm.reset();
     showDashboard();
-  } catch {
-    adminStatus.textContent = 'The admin service is unavailable. Please try again.';
+  } catch (error) {
+    adminStatus.textContent = error instanceof TypeError
+      ? 'The admin service could not be reached. Confirm the server is running at http://localhost:3000.'
+      : 'The admin service returned an unexpected response. Please try again.';
   } finally {
     loginButton.disabled = false;
   }
