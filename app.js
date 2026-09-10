@@ -6,9 +6,20 @@ const openAdminLogin = document.querySelector('#open-admin-login');
 const closeAdminLogin = document.querySelector('#close-admin-login');
 const adminLoginForm = document.querySelector('#admin-login-form');
 const adminStatus = document.querySelector('#admin-status');
+const adminDashboard = document.querySelector('#admin-dashboard');
+const adminLogout = document.querySelector('#admin-logout');
+const dashboardTabs = document.querySelectorAll('.dashboard-tab');
+const dashboardViews = document.querySelectorAll('.dashboard-view');
+const verifyPassButton = document.querySelector('#verify-pass');
+const manualPass = document.querySelector('#manual-pass');
+const scannerStatus = document.querySelector('#scanner-status');
 
-// Replace this client-side placeholder with a server-side allowlist and password verification.
 const ADMIN_ACCOUNT_LIMIT = 15;
+const DEVELOPMENT_ADMIN = {
+  email: 'test@example.com',
+  password: '28672867',
+  name: 'Test Admin'
+};
 
 const fields = {
   name: {
@@ -78,6 +89,20 @@ function hideAdminLogin() {
   openAdminLogin.focus();
 }
 
+function showDashboard() {
+  adminOverlay.hidden = true;
+  registrationPanel.hidden = true;
+  adminDashboard.hidden = false;
+  document.title = 'Admin Dashboard | Illuminate Verification';
+}
+
+function showRegistration() {
+  adminDashboard.hidden = true;
+  registrationPanel.hidden = false;
+  document.title = 'Event Registration';
+  openAdminLogin.focus();
+}
+
 openAdminLogin.addEventListener('click', showAdminLogin);
 closeAdminLogin.addEventListener('click', hideAdminLogin);
 
@@ -106,5 +131,36 @@ adminLoginForm.addEventListener('submit', (event) => {
     return;
   }
 
-  adminStatus.textContent = `Admin authentication will connect to the secure backend for ${ADMIN_ACCOUNT_LIMIT} accounts.`;
+  if (email.value.trim().toLowerCase() !== DEVELOPMENT_ADMIN.email || password.value !== DEVELOPMENT_ADMIN.password) {
+    adminStatus.textContent = 'Those admin credentials are not recognized.';
+    password.setAttribute('aria-invalid', 'true');
+    password.focus();
+    return;
+  }
+
+  document.querySelector('#admin-name').textContent = DEVELOPMENT_ADMIN.name;
+  adminLoginForm.reset();
+  showDashboard();
+});
+
+dashboardTabs.forEach((tab) => {
+  tab.addEventListener('click', () => {
+    dashboardTabs.forEach((item) => {
+      item.classList.toggle('is-active', item === tab);
+      item.setAttribute('aria-selected', String(item === tab));
+    });
+    dashboardViews.forEach((view) => {
+      view.hidden = view.id !== tab.getAttribute('aria-controls');
+    });
+  });
+});
+
+adminLogout.addEventListener('click', showRegistration);
+
+verifyPassButton.addEventListener('click', () => {
+  const passId = manualPass.value.trim().toUpperCase();
+  scannerStatus.textContent = passId === 'ILL-2048' || passId === 'ILL-2054'
+    ? `${passId} is verified and ready for entry.`
+    : 'Pass not found. Check the ID and try again.';
+  scannerStatus.classList.toggle('is-success', passId === 'ILL-2048' || passId === 'ILL-2054');
 });

@@ -99,10 +99,65 @@
             <button class="submit-button admin-submit" type="submit">Log in</button>
             <p class="admin-status" id="admin-status" role="status" aria-live="polite"></p>
           </form>
-          <p class="admin-account-note">Access is limited to the 15 authorized admin accounts.</p>
+          <p class="admin-account-note">Development account enabled for local testing.</p>
         </div>
       </section>
     </div>
+
+    <section class="dashboard" id="admin-dashboard" hidden aria-labelledby="dashboard-title">
+      <header class="dashboard-header">
+        <div>
+          <p class="eyebrow">Illuminate verification</p>
+          <h2 id="dashboard-title">Welcome, <span id="admin-name">Test Admin</span>!</h2>
+          <p class="dashboard-subtitle">Manage registrations and verify event passes from one place.</p>
+        </div>
+        <button class="dashboard-logout" id="admin-logout" type="button">Log out</button>
+      </header>
+
+      <div class="dashboard-toggle" role="tablist" aria-label="Dashboard views">
+        <button class="dashboard-tab is-active" id="registrations-tab" type="button" role="tab" aria-selected="true" aria-controls="registrations-view">Registrations</button>
+        <button class="dashboard-tab" id="scanner-tab" type="button" role="tab" aria-selected="false" aria-controls="scanner-view">QR Scanner</button>
+      </div>
+
+      <div class="dashboard-view" id="registrations-view" role="tabpanel" aria-labelledby="registrations-tab">
+        <div class="dashboard-view-heading">
+          <div>
+            <p class="view-kicker">Live overview</p>
+            <h3>Recent registrations</h3>
+          </div>
+          <span class="record-count">3 records</span>
+        </div>
+        <div class="registration-table-wrap">
+          <table class="registration-table">
+            <thead>
+              <tr><th>Attendee</th><th>Illuminate ID</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Aarav Sharma</strong><span>aarav@example.com</span></td><td>ILL-2048</td><td><span class="status-badge status-verified">Verified</span></td></tr>
+              <tr><td><strong>Maya Patel</strong><span>maya@example.com</span></td><td>ILL-2051</td><td><span class="status-badge status-pending">Pending</span></td></tr>
+              <tr><td><strong>Rohan Mehta</strong><span>rohan@example.com</span></td><td>ILL-2054</td><td><span class="status-badge status-verified">Verified</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="dashboard-view" id="scanner-view" role="tabpanel" aria-labelledby="scanner-tab" hidden>
+        <div class="scanner-panel">
+          <div class="scanner-frame" aria-hidden="true"><span></span></div>
+          <div class="scanner-copy">
+            <p class="view-kicker">Entry verification</p>
+            <h3>Scan an event pass</h3>
+            <p>Position a registrant's QR code inside the frame to verify their pass.</p>
+            <label for="manual-pass">Or enter a pass ID</label>
+            <div class="manual-pass-row">
+              <input id="manual-pass" type="text" placeholder="e.g. ILL-2048" />
+              <button class="scan-button" id="verify-pass" type="button">Verify</button>
+            </div>
+            <p class="scanner-status" id="scanner-status" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 </body>
 </html>
