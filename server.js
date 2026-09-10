@@ -83,11 +83,18 @@ const contentTypes = {
   '.svg': 'image/svg+xml'
 };
 
+function getLocalOrigin(request) {
+  const origin = request.headers.origin || '';
+  return /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin) ? origin : 'http://localhost:5500';
+}
+
 function sendJson(response, status, body) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff'
+    'X-Content-Type-Options': 'nosniff',
+    'Access-Control-Allow-Origin': response.localOrigin || 'http://localhost:5500',
+    'Access-Control-Allow-Credentials': 'true'
   });
   response.end(JSON.stringify(body));
 }
@@ -429,28 +436,40 @@ function serveStatic(request, response) {
 }
 
 const server = createServer(async (request, response) => {
-  if (request.method === 'POST' && request.url === '/api/admin/login') {
+  response.localOrigin = getLocalOrigin(request);
+  const requestPath = new URL(request.url, `http://${request.headers.host || 'localhost'}`).pathname;
+  if (request.method === 'OPTIONS' && requestPath.startsWith('/api/')) {
+    response.writeHead(204, {
+      'Access-Control-Allow-Origin': response.localOrigin,
+      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+    });
+    response.end();
+    return;
+  }
+  if (request.method === 'POST' && requestPath === '/api/admin/login') {
     await handleAdminLogin(request, response);
     return;
   }
-  if (request.method === 'POST' && request.url === '/api/admin/logout') {
+  if (request.method === 'POST' && requestPath === '/api/admin/logout') {
     handleAdminLogout(request, response);
     return;
   }
-  if (request.method === 'GET' && request.url === '/api/admin/registrations') {
+  if (request.method === 'GET' && requestPath === '/api/admin/registrations') {
     await handleAdminRegistrations(request, response);
     return;
   }
-  if (request.method === 'POST' && request.url.startsWith('/api/admin/registrations/')) {
-    const registrationId = request.url.split('/')[4];
+  if (request.method === 'POST' && requestPath.startsWith('/api/admin/registrations/')) {
+    const registrationId = requestPath.split('/')[4];
     await handleRemoveRegistration(request, response, registrationId);
     return;
   }
-  if (request.method === 'POST' && request.url === '/api/admin/verify') {
+  if (request.method === 'POST' && requestPath === '/api/admin/verify') {
     await handleVerifyPass(request, response);
     return;
   }
-  if (request.method === 'POST' && request.url === '/api/events/illuminate-2026/registrations') {
+  if (request.method === 'POST' && requestPath === '/api/events/illuminate-2026/registrations') {
     await handleRegistration(request, response);
     return;
   }

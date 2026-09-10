@@ -29,6 +29,9 @@ const qrCode = document.querySelector('#qr-code');
 const qrPassId = document.querySelector('#qr-pass-id');
 const downloadQrButton = document.querySelector('#download-qr-code');
 const submitButton = form.querySelector('button[type="submit"]');
+const apiBase = window.location.port && window.location.port !== '3000'
+  ? 'http://localhost:3000'
+  : '';
 
 let registrationQrDataUrl = '';
 
@@ -90,7 +93,7 @@ form.addEventListener('submit', async (event) => {
   statusMessage.textContent = 'Creating your event pass...';
 
   try {
-    const response = await fetch('/api/events/illuminate-2026/registrations', {
+    const response = await fetch(`${apiBase}/api/events/illuminate-2026/registrations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -206,7 +209,7 @@ adminLoginForm.addEventListener('submit', async (event) => {
   const loginButton = adminLoginForm.querySelector('button[type="submit"]');
   loginButton.disabled = true;
   try {
-    const response = await fetch('/api/admin/login', {
+    const response = await fetch(`${apiBase}/api/admin/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email.value, password: password.value })
@@ -307,7 +310,7 @@ function renderRegistrations(registrations) {
         return;
       }
       removeButton.disabled = true;
-      const response = await fetch(`/api/admin/registrations/${registration.id}`, {
+      const response = await fetch(`${apiBase}/api/admin/registrations/${registration.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason })
@@ -327,7 +330,7 @@ function renderRegistrations(registrations) {
 async function loadRegistrations() {
   registrationsStatus.textContent = 'Loading registrations...';
   try {
-    const response = await fetch('/api/admin/registrations');
+    const response = await fetch(`${apiBase}/api/admin/registrations`);
     const result = await response.json();
     if (response.status === 401) {
       showRegistration();
@@ -348,7 +351,7 @@ async function verifyPass(value) {
   scannerStatus.classList.remove('is-success');
   verificationDetails.hidden = true;
   scannerStatus.textContent = 'Checking pass...';
-  const response = await fetch('/api/admin/verify', {
+  const response = await fetch(`${apiBase}/api/admin/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ value })
@@ -364,7 +367,7 @@ async function verifyPass(value) {
 
 adminLogout.addEventListener('click', async () => {
   stopCamera();
-  await fetch('/api/admin/logout', { method: 'POST' });
+  await fetch(`${apiBase}/api/admin/logout`, { method: 'POST' });
   showRegistration();
 });
 
