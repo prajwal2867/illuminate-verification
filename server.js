@@ -48,7 +48,8 @@ database.exec(`
     created_at TEXT NOT NULL
   );
   CREATE UNIQUE INDEX IF NOT EXISTS registrations_event_illuminate_id
-    ON registrations(event_id, illuminate_id);
+    ON registrations(event_id, illuminate_id)
+    WHERE status != 'removed';
   CREATE TABLE IF NOT EXISTS passes (
     id TEXT PRIMARY KEY,
     registration_id TEXT NOT NULL UNIQUE REFERENCES registrations(id),
@@ -64,6 +65,13 @@ database.exec(`
     entity_id TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
+`);
+
+database.exec('DROP INDEX IF EXISTS registrations_event_illuminate_id');
+database.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS registrations_event_illuminate_id
+    ON registrations(event_id, illuminate_id)
+    WHERE status != 'removed'
 `);
 
 try {

@@ -29,9 +29,13 @@ const qrCode = document.querySelector('#qr-code');
 const qrPassId = document.querySelector('#qr-pass-id');
 const downloadQrButton = document.querySelector('#download-qr-code');
 const submitButton = form.querySelector('button[type="submit"]');
-const apiBase = window.location.port && window.location.port !== '3000'
-  ? 'http://localhost:3000'
-  : '';
+const apiBase = window.EVENT_API_BASE || (
+  ['localhost', '127.0.0.1'].includes(window.location.hostname)
+    && window.location.port
+    && window.location.port !== '3000'
+    ? 'http://localhost:3000'
+    : ''
+);
 
 let registrationQrDataUrl = '';
 
@@ -91,6 +95,7 @@ form.addEventListener('submit', async (event) => {
   try {
     const response = await fetch(`${apiBase}/api/events/illuminate-2026/registrations`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: fields.name.input.value,
         email: fields.email.input.value,
