@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import QRCode from 'qrcode';
 
@@ -14,14 +14,13 @@ const eventId = 'illuminate-2026';
 const maxBodyBytes = 12_000;
 const registrationWindowMs = 60_000;
 const registrationAttempts = new Map();
-const sessions = new Map();
-const PREDEFINED_ADMIN_ACCOUNTS = [
-  { email: 'test@example.com', password: '28672867', name: 'Test Admin' }
-  // Add the remaining authorized admin accounts here when they are provided.
-];
-const encryptionKey = createHash('sha256')
-  .update(process.env.PASS_ENCRYPTION_KEY || 'local-development-pass-encryption-key')
-  .digest();
+const loginAttempts = new Map();
+const sessionDurationMs = 8 * 60 * 60 * 1000;
+const encryptionSecret = process.env.PASS_ENCRYPTION_KEY;
+if (!encryptionSecret) {
+  throw new Error('PASS_ENCRYPTION_KEY must be configured.');
+}
+const encryptionKey = createHash('sha256').update(encryptionSecret).digest();
 
 if (!existsSync(dataDirectory)) {
   mkdirSync(dataDirectory, { recursive: true });
@@ -63,9 +62,53 @@ database.exec(`
     id TEXT PRIMARY KEY,
     action TEXT NOT NULL,
     entity_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    actor_admin_id TEXT,
+    reason TEXT,
+    result TEXT,
+    metadata_json TEXT
+  );
+  CREATE TABLE IF NOT EXISTS admin_users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'admin',
+    active INTEGER NOT NULL DEFAULT 1,
+    last_login_at TEXT,
     created_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS admin_sessions (
+    id_hash TEXT PRIMARY KEY,
+    admin_user_id TEXT NOT NULL REFERENCES admin_users(id),
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS check_ins (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL REFERENCES events(id),
+    pass_id TEXT NOT NULL REFERENCES passes(id),
+    result TEXT NOT NULL,
+    checked_in_at TEXT NOT NULL,
+    admin_user_id TEXT REFERENCES admin_users(id),
+    UNIQUE(event_id, pass_id)
+  );
 `);
+
+for (const column of [
+  ['audit_logs', 'actor_admin_id TEXT'],
+  ['audit_logs', 'reason TEXT'],
+  ['audit_logs', 'result TEXT'],
+  ['audit_logs', 'metadata_json TEXT'],
+  ['passes', 'used_at TEXT']
+]) {
+  try {
+    database.exec(`ALTER TABLE ${column[0]} ADD COLUMN ${column[1]}`);
+  } catch {
+    // Existing databases already have the column.
+  }
+}
 
 database.exec('DROP INDEX IF EXISTS registrations_event_illuminate_id');
 database.exec(`
@@ -80,6 +123,58 @@ try {
   // Existing databases already have the column.
 }
 
+function parsePasswordHash(value) {
+  const [algorithm, cost, blockSize, parallelization, salt, digest] = String(value || '').split('$');
+  if (algorithm !== 'scrypt' || !cost || !blockSize || !parallelization || !salt || !digest) {
+    return null;
+  }
+  return {
+    cost: Number(cost),
+    blockSize: Number(blockSize),
+    parallelization: Number(parallelization),
+    salt,
+    digest: Buffer.from(digest, 'base64url')
+  };
+}
+
+function verifyPassword(password, encodedHash) {
+  const parsed = parsePasswordHash(encodedHash);
+  if (!parsed || !Number.isInteger(parsed.cost) || !Number.isInteger(parsed.blockSize)
+    || !Number.isInteger(parsed.parallelization) || parsed.digest.length !== 64) {
+    return false;
+  }
+  const derived = scryptSync(password, parsed.salt, parsed.digest.length, {
+    N: parsed.cost,
+    r: parsed.blockSize,
+    p: parsed.parallelization,
+    maxmem: 32 * 1024 * 1024
+  });
+  return timingSafeEqual(derived, parsed.digest);
+}
+
+function hashSessionId(sessionId) {
+  return createHash('sha256').update(sessionId).digest('hex');
+}
+
+function ensureConfiguredAdmin() {
+  const email = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const passwordHash = String(process.env.ADMIN_PASSWORD_HASH || '').trim();
+  if (!email || !passwordHash) {
+    return;
+  }
+  const existing = database.prepare('SELECT id FROM admin_users WHERE email = ?').get(email);
+  if (existing) {
+    database.prepare('UPDATE admin_users SET password_hash = ?, active = 1 WHERE id = ?').run(passwordHash, existing.id);
+    return;
+  }
+  database.prepare(`
+    INSERT INTO admin_users (id, email, password_hash, display_name, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(randomUUID(), email, passwordHash, process.env.ADMIN_NAME || 'Event Administrator', new Date().toISOString());
+}
+
+ensureConfiguredAdmin();
+
 database.prepare(`
   INSERT INTO events (id, name, starts_at, status)
   VALUES (?, ?, ?, 'open')
@@ -92,10 +187,21 @@ const contentTypes = {
   '.js': 'text/javascript; charset=utf-8',
   '.svg': 'image/svg+xml'
 };
+const allowedOrigins = new Set(
+  (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5500')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+);
 
 function getLocalOrigin(request) {
   const origin = request.headers.origin || '';
-  return /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin) ? origin : 'http://localhost:5500';
+  return allowedOrigins.has(origin) ? origin : '';
+}
+
+function hasTrustedOrigin(request) {
+  const origin = request.headers.origin;
+  return !origin || allowedOrigins.has(origin);
 }
 
 function sendJson(response, status, body) {
@@ -103,8 +209,12 @@ function sendJson(response, status, body) {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
-    'Access-Control-Allow-Origin': response.localOrigin || 'http://localhost:5500',
-    'Access-Control-Allow-Credentials': 'true'
+    'Referrer-Policy': 'no-referrer',
+    'Access-Control-Allow-Credentials': 'true',
+    ...(response.localOrigin ? {
+      'Access-Control-Allow-Origin': response.localOrigin,
+      Vary: 'Origin'
+    } : {})
   });
   response.end(JSON.stringify(body));
 }
@@ -121,13 +231,20 @@ function getCookies(request) {
 }
 
 function getAdminSession(request) {
-  const sessionId = getCookies(request).admin_session;
-  if (!sessionId) {
+  const rawSessionId = getCookies(request).admin_session;
+  if (!rawSessionId) {
     return null;
   }
-  const session = sessions.get(sessionId);
-  if (!session || session.expiresAt < Date.now()) {
-    sessions.delete(sessionId);
+  const session = database.prepare(`
+    SELECT s.id_hash AS idHash, s.admin_user_id AS adminUserId,
+      a.display_name AS name, a.role
+    FROM admin_sessions s
+    JOIN admin_users a ON a.id = s.admin_user_id
+    WHERE s.id_hash = ? AND s.revoked_at IS NULL
+      AND s.expires_at > ? AND a.active = 1
+  `).get(hashSessionId(rawSessionId), new Date().toISOString());
+  if (!session) {
+    database.prepare('DELETE FROM admin_sessions WHERE id_hash = ?').run(hashSessionId(rawSessionId));
     return null;
   }
   return session;
@@ -161,7 +278,22 @@ function setSessionCookie(response, sessionId) {
 }
 
 function clearSessionCookie(response) {
-  response.setHeader('Set-Cookie', 'admin_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+  response.setHeader('Set-Cookie', `admin_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+}
+
+function isRateLimited(map, key, limit, windowMs) {
+  const now = Date.now();
+  const attempts = (map.get(key) || []).filter((time) => now - time < windowMs);
+  attempts.push(now);
+  map.set(key, attempts);
+  if (map.size > 10_000) {
+    for (const [storedKey, storedAttempts] of map) {
+      if (!storedAttempts.some((time) => now - time < windowMs)) {
+        map.delete(storedKey);
+      }
+    }
+  }
+  return attempts.length > limit;
 }
 
 function normalizeRegistration(input) {
@@ -186,13 +318,20 @@ function getClientKey(request) {
   return request.socket.remoteAddress || 'unknown';
 }
 
-function isRateLimited(request) {
-  const now = Date.now();
-  const key = getClientKey(request);
-  const attempts = (registrationAttempts.get(key) || []).filter((time) => now - time < registrationWindowMs);
-  attempts.push(now);
-  registrationAttempts.set(key, attempts);
-  return attempts.length > 5;
+function writeAudit(action, entityId, actorAdminId, options = {}) {
+  database.prepare(`
+    INSERT INTO audit_logs (id, action, entity_id, created_at, actor_admin_id, reason, result, metadata_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    randomUUID(),
+    action,
+    entityId,
+    new Date().toISOString(),
+    actorAdminId || null,
+    options.reason || null,
+    options.result || null,
+    options.metadata ? JSON.stringify(options.metadata) : null
+  );
 }
 
 function readRequestBody(request) {
@@ -211,7 +350,7 @@ function readRequestBody(request) {
 }
 
 async function handleRegistration(request, response) {
-  if (isRateLimited(request)) {
+  if (isRateLimited(registrationAttempts, getClientKey(request), 5, registrationWindowMs)) {
     sendError(response, 429, 'Too many attempts. Please try again shortly.');
     return;
   }
@@ -250,6 +389,7 @@ async function handleRegistration(request, response) {
   const tokenHash = createHash('sha256').update(rawToken).digest('hex');
   const createdAt = new Date().toISOString();
   const qrPayload = `EVP1.${eventId}.${rawToken}`;
+  const expiresAt = event.ends_at || null;
 
   try {
     database.exec('BEGIN');
@@ -258,13 +398,10 @@ async function handleRegistration(request, response) {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(registrationId, eventId, registration.name, registration.email, registration.phone, registration.illuminateId, createdAt);
     database.prepare(`
-      INSERT INTO passes (id, registration_id, token_hash, issued_at, qr_payload_encrypted)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(passId, registrationId, tokenHash, createdAt, encryptPayload(qrPayload));
-    database.prepare(`
-      INSERT INTO audit_logs (id, action, entity_id, created_at)
-      VALUES (?, 'registration_created', ?, ?)
-    `).run(randomUUID(), registrationId, createdAt);
+      INSERT INTO passes (id, registration_id, token_hash, issued_at, expires_at, qr_payload_encrypted)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(passId, registrationId, tokenHash, createdAt, expiresAt, encryptPayload(qrPayload));
+    writeAudit('registration_created', registrationId, null, { metadata: { eventId } });
     database.exec('COMMIT');
   } catch {
     database.exec('ROLLBACK');
@@ -286,26 +423,41 @@ async function handleAdminLogin(request, response) {
   }
   const email = String(input.email || '').trim().toLowerCase();
   const password = String(input.password || '');
-  const account = PREDEFINED_ADMIN_ACCOUNTS.find((item) => item.email.toLowerCase() === email);
-  const submittedPasswordHash = createHash('sha256').update(password).digest();
-  const configuredPasswordHash = createHash('sha256')
-    .update(account?.password || randomBytes(32).toString('hex'))
-    .digest();
-  const passwordMatch = timingSafeEqual(submittedPasswordHash, configuredPasswordHash);
-  if (!account || !passwordMatch) {
+  if (isRateLimited(loginAttempts, `${getClientKey(request)}:${email}`, 5, 15 * 60 * 1000)) {
+    sendError(response, 429, 'Too many login attempts. Please try again later.');
+    return;
+  }
+  const account = database.prepare(`
+    SELECT id, email, password_hash AS passwordHash, display_name AS name
+    FROM admin_users
+    WHERE email = ? AND active = 1
+  `).get(email);
+  if (!account || !verifyPassword(password, account.passwordHash)) {
     sendError(response, 401, 'Those admin credentials are not recognized.');
     return;
   }
   const sessionId = randomBytes(32).toString('base64url');
-  sessions.set(sessionId, { name: account.name, expiresAt: Date.now() + 8 * 60 * 60 * 1000 });
+  const createdAt = new Date();
+  const expiresAt = new Date(createdAt.getTime() + sessionDurationMs).toISOString();
+  database.prepare('DELETE FROM admin_sessions WHERE admin_user_id = ? OR expires_at <= ?').run(account.id, createdAt.toISOString());
+  database.prepare(`
+    INSERT INTO admin_sessions (id_hash, admin_user_id, created_at, expires_at)
+    VALUES (?, ?, ?, ?)
+  `).run(hashSessionId(sessionId), account.id, createdAt.toISOString(), expiresAt);
+  database.prepare('UPDATE admin_users SET last_login_at = ? WHERE id = ?').run(createdAt.toISOString(), account.id);
+  writeAudit('admin_login', account.id, account.id, { result: 'accepted' });
   setSessionCookie(response, sessionId);
   sendJson(response, 200, { name: account.name });
 }
 
 function handleAdminLogout(request, response) {
   const sessionId = getCookies(request).admin_session;
+  const session = getAdminSession(request);
   if (sessionId) {
-    sessions.delete(sessionId);
+    database.prepare('UPDATE admin_sessions SET revoked_at = ? WHERE id_hash = ?').run(new Date().toISOString(), hashSessionId(sessionId));
+  }
+  if (session) {
+    writeAudit('admin_logout', session.adminUserId, session.adminUserId, { result: 'accepted' });
   }
   clearSessionCookie(response);
   sendJson(response, 200, { ok: true });
@@ -346,7 +498,8 @@ async function handleAdminRegistrations(request, response) {
 }
 
 async function handleRemoveRegistration(request, response, registrationId) {
-  if (!requireAdmin(request, response)) {
+  const session = requireAdmin(request, response);
+  if (!session) {
     return;
   }
   let input = {};
@@ -371,7 +524,7 @@ async function handleRemoveRegistration(request, response, registrationId) {
   try {
     database.prepare('UPDATE registrations SET status = \'removed\' WHERE id = ?').run(registrationId);
     database.prepare('UPDATE passes SET status = \'revoked\' WHERE registration_id = ?').run(registrationId);
-    database.prepare('INSERT INTO audit_logs (id, action, entity_id, created_at) VALUES (?, ?, ?, ?)').run(randomUUID(), `registration_removed: ${reason}`, registrationId, now);
+    writeAudit('registration_removed', registrationId, session.adminUserId, { reason, result: 'accepted' });
     database.exec('COMMIT');
   } catch {
     database.exec('ROLLBACK');
@@ -382,7 +535,8 @@ async function handleRemoveRegistration(request, response, registrationId) {
 }
 
 async function handleVerifyPass(request, response) {
-  if (!requireAdmin(request, response)) {
+  const session = requireAdmin(request, response);
+  if (!session) {
     return;
   }
   let input;
@@ -397,19 +551,33 @@ async function handleVerifyPass(request, response) {
     sendError(response, 400, 'Enter or scan a pass.');
     return;
   }
-  let pass;
+  let token = null;
   if (value.startsWith('EVP1.')) {
-    const token = value.split('.').pop();
+    const payload = value.match(/^EVP1\.([A-Za-z0-9-]+)\.([A-Za-z0-9_-]{43})$/);
+    if (!payload || payload[1] !== eventId) {
+      sendJson(response, 400, { result: 'not_found', message: 'This pass is not valid for the selected event.' });
+      return;
+    }
+    token = payload[2];
+  }
+  const event = database.prepare('SELECT id, status, starts_at AS startsAt, ends_at AS endsAt FROM events WHERE id = ?').get(eventId);
+  const now = new Date();
+  if (!event || event.status !== 'open' || (event.startsAt && now < new Date(event.startsAt)) || (event.endsAt && now > new Date(event.endsAt))) {
+    sendJson(response, 409, { result: 'event_unavailable', message: 'This event is not currently accepting entry.' });
+    return;
+  }
+  let pass;
+  if (token) {
     pass = database.prepare(`
       SELECT p.id AS passId, p.status AS passStatus, r.name, r.email, r.phone,
-        r.illuminate_id AS illuminateId, r.status
+        r.illuminate_id AS illuminateId, r.status, p.expires_at AS expiresAt
       FROM passes p JOIN registrations r ON r.id = p.registration_id
       WHERE p.token_hash = ? AND r.event_id = ?
     `).get(createHash('sha256').update(token).digest('hex'), eventId);
   } else {
     pass = database.prepare(`
       SELECT p.id AS passId, p.status AS passStatus, r.name, r.email, r.phone,
-        r.illuminate_id AS illuminateId, r.status
+        r.illuminate_id AS illuminateId, r.status, p.expires_at AS expiresAt
       FROM passes p JOIN registrations r ON r.id = p.registration_id
       WHERE p.id = ? AND r.event_id = ?
     `).get(value.toUpperCase(), eventId);
@@ -419,16 +587,49 @@ async function handleVerifyPass(request, response) {
     return;
   }
   if (pass.status === 'removed' || pass.passStatus === 'revoked') {
-    sendJson(response, 403, { result: 'revoked', message: 'This pass was removed or revoked.', attendee: pass });
+    sendJson(response, 403, { result: 'revoked', message: 'This pass was removed or revoked.', attendee: { name: pass.name, illuminateId: pass.illuminateId } });
+    return;
+  }
+  if (pass.expiresAt && now > new Date(pass.expiresAt)) {
+    database.prepare('UPDATE passes SET status = \'expired\' WHERE id = ? AND status = \'active\'').run(pass.passId);
+    sendJson(response, 403, { result: 'expired', message: 'This pass has expired.', attendee: { name: pass.name, illuminateId: pass.illuminateId } });
+    return;
+  }
+  if (pass.status !== 'approved' && pass.status !== 'active') {
+    sendJson(response, 403, { result: 'registration_not_eligible', message: 'This registration is not eligible for entry.' });
     return;
   }
   if (pass.passStatus === 'used') {
-    sendJson(response, 409, { result: 'already_used', message: 'This pass has already been used.', attendee: pass });
+    sendJson(response, 409, { result: 'already_used', message: 'This pass has already been used.', attendee: { name: pass.name, illuminateId: pass.illuminateId } });
     return;
   }
-  database.prepare('UPDATE passes SET status = \'used\' WHERE id = ?').run(pass.passId);
-  database.prepare('INSERT INTO audit_logs (id, action, entity_id, created_at) VALUES (?, ?, ?, ?)').run(randomUUID(), 'pass_checked_in', pass.passId, new Date().toISOString());
-  sendJson(response, 200, { result: 'accepted', message: 'Pass accepted. Entry recorded.', attendee: pass });
+  try {
+    database.exec('BEGIN IMMEDIATE');
+    const updated = database.prepare(`
+      UPDATE passes SET status = 'used', used_at = ?
+      WHERE id = ? AND status = 'active'
+    `).run(now.toISOString(), pass.passId);
+    if (updated.changes !== 1) {
+      database.exec('ROLLBACK');
+      sendJson(response, 409, { result: 'already_used', message: 'This pass has already been used.' });
+      return;
+    }
+    database.prepare(`
+      INSERT INTO check_ins (id, event_id, pass_id, result, checked_in_at, admin_user_id)
+      VALUES (?, ?, ?, 'accepted', ?, ?)
+    `).run(randomUUID(), eventId, pass.passId, now.toISOString(), session.adminUserId);
+    writeAudit('pass_checked_in', pass.passId, session.adminUserId, { result: 'accepted', metadata: { eventId } });
+    database.exec('COMMIT');
+  } catch {
+    database.exec('ROLLBACK');
+    sendError(response, 500, 'Pass verification could not be completed.');
+    return;
+  }
+  sendJson(response, 200, {
+    result: 'accepted',
+    message: 'Pass accepted. Entry recorded.',
+    attendee: { name: pass.name, illuminateId: pass.illuminateId }
+  });
 }
 
 function serveStatic(request, response) {
@@ -441,7 +642,8 @@ function serveStatic(request, response) {
   response.writeHead(200, {
     'Content-Type': contentTypes[extname(filePath)] || 'application/octet-stream',
     'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'strict-origin-when-cross-origin'
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy': "default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
   });
   response.end(readFileSync(filePath));
 }
@@ -450,13 +652,24 @@ const server = createServer(async (request, response) => {
   response.localOrigin = getLocalOrigin(request);
   const requestPath = new URL(request.url, `http://${request.headers.host || 'localhost'}`).pathname;
   if (request.method === 'OPTIONS' && requestPath.startsWith('/api/')) {
+    if (!hasTrustedOrigin(request)) {
+      sendError(response, 403, 'Origin is not allowed.');
+      return;
+    }
     response.writeHead(204, {
-      'Access-Control-Allow-Origin': response.localOrigin,
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Headers': 'Content-Type',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      ...(response.localOrigin ? {
+        'Access-Control-Allow-Origin': response.localOrigin,
+        Vary: 'Origin'
+      } : {})
     });
     response.end();
+    return;
+  }
+  if (request.method === 'POST' && requestPath.startsWith('/api/admin/') && !hasTrustedOrigin(request)) {
+    sendError(response, 403, 'Origin is not allowed.');
     return;
   }
   if (request.method === 'POST' && requestPath === '/api/admin/login') {

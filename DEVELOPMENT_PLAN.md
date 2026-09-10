@@ -21,6 +21,18 @@ It is still not ready for a real event. The main problem is not the visual exper
 
 The recommended direction is a small single-application system with one public registration flow and one protected admin control room. Keep the user experience short and forgiving, but make the server the only authority for identity, pass lifecycle, permissions, and check-in.
 
+### Implementation status: first slice completed
+
+- Admin credentials now come from environment configuration and use scrypt verification; the source-held test credential is gone.
+- Admin sessions and admin users are persisted in SQLite with session expiry and logout revocation.
+- Registration, login, removal, and check-in audit records can identify the acting administrator where applicable.
+- QR payloads are validated for version, event, and token shape; pass expiry and event timing are enforced.
+- Check-in now uses an atomic conditional update plus a unique check-in record, preventing concurrent double acceptance.
+- Configured origin checks, CSP, and safer API/static response headers were added.
+- `.env.example` and `npm run admin:hash` document the required secret provisioning path.
+
+The next implementation slice is data minimization and operational completeness: paginated admin results, explicit revoke/reissue controls, an admin session restore endpoint, structured migrations, and focused automated concurrency/security tests.
+
 ## 2. What the current build actually does
 
 ### Public attendee flow
