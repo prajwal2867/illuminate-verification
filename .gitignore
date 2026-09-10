@@ -4,6 +4,7 @@
 !.env.example
 *.pem
 *.key
+admin credentials.txt
 
 # Dependencies and generated output
 node_modules/
