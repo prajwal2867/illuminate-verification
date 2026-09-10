@@ -9,7 +9,7 @@
 
 The current build is a useful visual and interaction prototype, but it is not an event verification system yet. It has no server, database, durable user records, real authentication, real QR codes, or trusted verification boundary. All security-sensitive decisions are made in the browser, so any visitor can inspect or change them.
 
-The recommended next step is a small full-stack TypeScript application with a public registration flow and a protected admin area backed by PostgreSQL. The public experience should remain a short form followed by a clear pass screen. The admin experience should expose only the actions that the logged-in administrator is authorized to perform, and every state-changing action should be validated and audited on the server.
+The recommended next step is a small full-stack application with a public registration flow and a protected admin area. For a single event or a modest number of attendees, one application and one database are enough. The public experience should remain a short form followed by a clear pass screen. The admin experience should expose only the actions that the logged-in administrator can perform, and every state-changing action should still be validated on the server.
 
 ## 2. Current State
 
@@ -42,7 +42,7 @@ The project contains only `index.html`, `styles.css`, `app.js`, an SVG asset, an
 
 The email and password are shipped to every browser in `app.js`. Anyone can read them, call the dashboard code directly, or edit the JavaScript and HTML. The current login is a display toggle, not authentication.
 
-**Required correction:** authenticate on the server, hash passwords with Argon2id, use secure HttpOnly sessions, and authorize every admin API request server-side.
+**Required correction:** authenticate on the server, hash passwords with Argon2id or bcrypt, use secure HttpOnly sessions, and authorize every admin request server-side.
 
 ### Critical: registration and verification are forgeable
 
@@ -54,7 +54,7 @@ The browser decides which details are accepted and which pass IDs are valid. A u
 
 There is no database or API. User data cannot be reliably retrieved by an admin, and two browsers cannot share the same registrations.
 
-**Required correction:** persist registrations, passes, check-ins, admin users, and audit events in PostgreSQL with constraints and transactions.
+**Required correction:** persist registrations, passes, check-ins, and the admin account in a database with unique constraints and transactions. A small deployment can start with SQLite; move to PostgreSQL only when concurrent traffic or reporting needs justify it.
 
 ### High: the QR code is not a QR code
 
@@ -91,28 +91,27 @@ Validation checks format only, accepts arbitrary Illuminate IDs, does not normal
 
 There are no automated tests, error monitoring, dependency management, backups, migration strategy, health checks, security headers, or CI checks. The visual design is a good starting point, but production reliability is currently unmeasured.
 
-## 4. Recommended Production Stack
+## 4. Recommended Practical Stack
 
-Use one deployable TypeScript application initially. This keeps the public flow and admin controls close together and avoids premature microservices.
+Use one deployable application initially. This keeps the public flow and admin controls together and avoids premature microservices. The choices below are deliberately simple; each can be upgraded later without changing the core data flow.
 
 | Area | Recommendation | Reason |
 |---|---|---|
-| Web application | Next.js App Router + TypeScript | One application for public pages, protected admin pages, and server route handlers |
-| UI | React + existing visual direction, with CSS Modules or a small global stylesheet | Preserves the simple form experience without adding a heavy component dependency |
-| Validation | Zod shared between forms and server handlers | One explicit schema for normalization and validation |
-| Database | PostgreSQL | Strong constraints, transactions, indexes, and reliable relational reporting |
-| ORM/migrations | Prisma or Drizzle; choose one and commit migrations | Typed queries and reviewable schema changes |
-| Authentication | Auth.js or an equivalent server-side session library with database sessions | Secure session lifecycle and role-aware access control |
-| Password hashing | Argon2id | Modern password hashing resistant to offline cracking |
-| Session storage | PostgreSQL initially; Redis only if scale requires it | Fewer moving parts for a small event system |
-| Rate limiting | Redis-backed limiter in production, with an edge/provider limiter as a second layer | Protects login, registration, and verification endpoints |
-| QR generation | `qrcode` on the server or client for display | Produces a standards-compliant QR image from a server-issued payload |
-| QR scanning | `@zxing/browser` or a maintained browser QR library | Camera scanning with graceful manual fallback |
-| Email | Transactional provider such as Postmark, Resend, or SES | Registration confirmation and admin recovery without building mail delivery |
-| Hosting | Managed Next.js host or container platform + managed PostgreSQL | HTTPS, environment secrets, backups, and simple deployment |
-| Observability | Structured server logs plus Sentry/OpenTelemetry-compatible error tracking | Detects failed verification and operational abuse |
-| Testing | Vitest, React Testing Library, Playwright, and OWASP-oriented API tests | Covers business rules, UI flow, browser behavior, and abuse cases |
-| CI/CD | GitHub Actions: typecheck, lint, unit tests, build, migration check, dependency audit | Prevents unsafe changes from reaching production |
+| Area | Start with | Upgrade when needed |
+|---|---|---|
+| Web application | Next.js + TypeScript, or Express + the existing frontend | Keep one application unless the team or traffic grows |
+| UI | Existing HTML/CSS/JavaScript, progressively connected to the API | Move to React only if the dashboard becomes difficult to maintain |
+| Validation | Zod or a similar server-side schema library | Share schemas with the client later for convenience |
+| Database | SQLite with Prisma or Drizzle | Move to PostgreSQL for multiple events or higher concurrency |
+| Authentication | One server-managed admin account and secure HttpOnly session | Add invited accounts and roles only when more staff need access |
+| Password hashing | Argon2id; bcrypt is an acceptable simpler fallback | Rehash passwords when settings or requirements change |
+| Rate limiting | In-memory limits for a single server, plus login throttling | Use Redis or a hosting-provider limiter when running multiple instances |
+| QR generation | JavaScript `qrcode` library using a server-issued token | A Python `qrcode` library is equally valid if the backend is Python |
+| QR scanning | `@zxing/browser` or another maintained browser scanner | Keep manual pass entry as a fallback |
+| Hosting | One HTTPS Node/Python deployment with managed database storage | Separate services only when there is a clear operational need |
+| Logging | Structured application log and a small audit table | Add hosted error monitoring if failures become hard to diagnose |
+| Testing | Unit tests for rules plus a few Playwright end-to-end flows | Add broader security scanning before public launch |
+| Delivery | Git repository, environment variables, and a simple build check | Add CI automation when more than one person contributes |
 
 Do not add a blockchain, microservices, or a custom cryptographic protocol. They would increase complexity without solving the actual problems in this application.
 
@@ -145,12 +144,12 @@ Do not add a blockchain, microservices, or a custom cryptographic protocol. They
 
 **AdminUser**
 
-- `id`, `email`, `passwordHash`, `displayName`, `role`, `status`, `lastLoginAt`
-- Roles: `admin` and `scanner`; add finer permissions only when needed
+- `id`, `email`, `passwordHash`, `displayName`, `lastLoginAt`
+- Start with one administrator. Add roles only when the event team needs different access levels.
 
 **AuditLog**
 
-- `id`, `actorId`, `action`, `entityType`, `entityId`, `metadata`, `ipHash`, `createdAt`
+- `id`, `actorId`, `action`, `entityType`, `entityId`, `metadata`, `createdAt`
 - Record login outcomes, registration decisions, pass issuance/revocation, deletion, and check-in results
 
 ### Registration flow
@@ -161,12 +160,12 @@ Do not add a blockchain, microservices, or a custom cryptographic protocol. They
 4. The server creates a registration and pass in one transaction.
 5. The server generates a cryptographically random token, stores only its hash, and returns a one-time pass retrieval response.
 6. The client renders a real QR code containing a non-PII payload.
-7. The user receives a confirmation reference or email so the pass can be recovered without exposing the full database record.
+7. The user receives a confirmation reference. Email recovery is optional and can be added later; do not make it a prerequisite for the first usable version.
 
 ### Admin flow
 
 1. Admin submits credentials to the server over HTTPS.
-2. The server verifies Argon2id, applies login rate limits, records the result, and creates a secure session.
+2. The server verifies the password, applies basic login throttling, records the result when practical, and creates a secure session.
 3. The dashboard fetches data through authenticated API requests. It never embeds registration records in HTML or JavaScript.
 4. The server checks the session role on every read and mutation.
 5. Approve, reject, revoke, delete, and check-in operations use explicit endpoints and write audit logs.
@@ -208,14 +207,14 @@ Only the server may transition a pass. A revoked, expired, or used pass must nev
 - `POST pass/revoke`: revoke immediately with a required reason.
 - `POST check-ins`: accept or reject through the atomic verification rule.
 - `DELETE registration`: soft-delete with confirmation and audit entry.
-- `GET audit-log`: admin-only, paginated, read-only history.
+- `GET audit-log`: admin-only, read-only history; pagination can be added when the log grows.
 
 ## 7. Security Requirements
 
 ### Application and browser security
 
 - HTTPS everywhere; redirect HTTP to HTTPS.
-- Secure, HttpOnly, SameSite cookies with a narrow cookie path and short idle timeout.
+- Secure, HttpOnly, SameSite cookies with a reasonable session timeout.
 - CSRF protection for cookie-authenticated state-changing requests.
 - Content Security Policy with nonces or hashes; remove inline `onclick` handlers.
 - `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, strict referrer policy, and HSTS after HTTPS is verified.
@@ -227,19 +226,18 @@ Only the server may transition a pass. A revoked, expired, or used pass must nev
 
 - Validate body, path, query, and headers on every endpoint.
 - Enforce event ownership and role permissions server-side.
-- Use pagination limits, maximum input lengths, request body limits, and timeouts.
+- Use maximum input lengths and a request body limit. Add pagination if the attendee list becomes large.
 - Return generic login errors to prevent account enumeration.
-- Rate-limit login, registration, pass retrieval, and verification separately.
-- Use idempotency keys for registration submission and check-in retries.
+- Throttle login and public registration. A simple duplicate-submit guard is enough initially; add idempotency keys if retries cause real problems.
 - Use database transactions and unique constraints as the final duplicate protection.
 
 ### Secrets and operations
 
 - Remove the development credentials from source control immediately.
 - Store secrets only in deployment secret storage and rotate them after any exposure.
-- Use separate development, staging, and production databases.
-- Encrypt backups, restrict database network access, and test restore procedures.
-- Keep dependencies updated and run an audit in CI.
+- Keep development and production data separate.
+- Back up the database before the event and test that a backup can be restored.
+- Keep dependencies updated; automated dependency auditing can be added with CI.
 - Log security events without logging passwords, raw QR tokens, or full personal data.
 
 ## 8. UX Rules for a Simple Experience
@@ -247,52 +245,51 @@ Only the server may transition a pass. A revoked, expired, or used pass must nev
 - Keep public registration to one short page and four required fields unless the event truly needs more.
 - Show inline errors near the field and preserve entered values after recoverable failures.
 - On success, show a clear pass ID, real QR code, expiry, and a recovery option.
-- Make the QR available again through a short-lived, authenticated recovery link or emailed confirmation; do not rely on browser memory.
+- Offer a simple download or print action for the QR. Add recovery by reference or email if users need to return later; do not rely only on browser memory.
 - Use one scanner screen with camera permission, a manual fallback, and unmistakable result states.
 - Do not make attendees understand statuses such as database IDs or internal moderation terms.
-- Keep admin tables searchable and paginated; confirm destructive actions and require a reason.
+- Keep the admin table searchable when it grows; confirm destructive actions and require a reason for rejection or revocation.
 - Provide loading, empty, error, offline, expired-session, and duplicate-submit states.
-- Meet WCAG 2.2 AA basics: keyboard navigation, focus management, contrast, live announcements, and reduced motion.
+- Cover the practical accessibility basics: keyboard navigation, visible focus, readable contrast, labels, live status messages, and reduced motion.
 
 ## 9. Phased Delivery Plan
 
-### Phase 0: security and product decisions
+### Phase 0: small-scope decisions
 
 - Confirm whether Illuminate ID is authoritative and how it is checked.
-- Confirm one event versus multiple events, pass expiry, one-entry policy, and data retention period.
-- Decide whether registration is automatically approved or admin-approved.
-- Define admin roles and whether email recovery is required.
+- Confirm the event date, pass expiry, one-entry policy, and how long attendee data should be kept.
+- Decide whether registration is automatic or needs admin approval.
+- Decide whether one administrator is enough for the first release.
 - Remove demo credentials and hard-coded attendee data from the working prototype.
 
-**Exit criteria:** signed-off state diagram, field list, retention policy, and permission matrix.
+**Exit criteria:** agreed field list, pass rules, retention period, and admin actions.
 
 ### Phase 1: foundation
 
-- Create the Next.js TypeScript application and package scripts.
-- Add environment validation, PostgreSQL connection, migrations, seed data, and CI.
-- Add shared Zod schemas and structured error handling.
-- Add security headers, logging, health endpoint, and dependency audit.
+- Create the backend and connect it to SQLite.
+- Add environment variables, migrations or schema setup, seed data, and basic error handling.
+- Add server-side input validation and essential security headers.
 
-**Exit criteria:** clean build, migration runs in a blank database, no secrets in source, CI is green.
+**Exit criteria:** the app starts from a clean checkout, the database can be created, and no secret is stored in source.
 
 ### Phase 2: public registration and pass issuance
 
 - Implement event lookup and server-side registration endpoint.
 - Normalize and validate attendee fields.
-- Add duplicate and idempotency handling.
+- Add duplicate handling and a disabled-submit/loading state.
 - Create hashed random pass tokens and real QR generation.
 - Build success, recovery, expiry, and failure states.
 
-**Exit criteria:** a registration survives refresh and can be retrieved only through an authorized recovery path; duplicate submissions do not create duplicate passes.
+**Exit criteria:** a registration survives refresh, duplicate IDs are rejected, and duplicate clicks do not create multiple passes.
 
 ### Phase 3: admin authentication and dashboard
 
 - Add admin provisioning and password hashing.
 - Implement secure sessions, login throttling, logout, and session expiry.
 - Replace static rows with paginated authenticated queries.
-- Add role checks, redaction, approve/reject, revoke, soft-delete, and audit history.
+- Add admin-only access, approve/reject, revoke, soft-delete, and a small audit history.
 
-**Exit criteria:** an unauthenticated request cannot read or mutate admin data, and every mutation has an audit record.
+**Exit criteria:** an unauthenticated request cannot read or mutate admin data, and important mutations are recorded.
 
 ### Phase 4: real verification
 
@@ -304,12 +301,12 @@ Only the server may transition a pass. A revoked, expired, or used pass must nev
 
 ### Phase 5: hardening and launch
 
-- Run automated security tests, dependency audit, accessibility checks, and browser tests.
-- Configure backups, monitoring, alerting, log retention, and incident response.
-- Perform a staging event rehearsal with realistic load and poor network conditions.
-- Review privacy copy, data deletion, admin onboarding, and emergency revocation procedures.
+- Run focused security, accessibility, and browser checks.
+- Configure backups and a basic error log.
+- Rehearse registration and check-in on the actual phones and network conditions likely to be used.
+- Review privacy copy, data deletion, admin setup, and pass revocation.
 
-**Exit criteria:** recovery is tested, restore is tested, critical security findings are closed, and an admin can complete the event workflow without developer intervention.
+**Exit criteria:** restore is tested, critical security findings are closed, and an administrator can complete the event workflow without developer intervention.
 
 ## 10. Test Plan
 
@@ -334,30 +331,29 @@ Only the server may transition a pass. A revoked, expired, or used pass must nev
 
 ### Security checks
 
-- OWASP ZAP or equivalent staging scan.
-- SQL injection, XSS, CSRF, IDOR, brute force, enumeration, replay, and privilege escalation tests.
+- Basic checks for SQL injection, XSS, CSRF, IDOR, brute force, enumeration, replay, and privilege escalation.
 - Verify that source bundles contain no passwords, raw tokens, or attendee data.
 - Verify that QR payloads contain no PII.
-- Verify security headers and cookie attributes in production-like deployment.
+- Verify security headers and cookie attributes in the deployed environment.
 
 ## 11. Launch Checklist
 
-- Production credentials are provisioned through a secret manager.
-- Development account is disabled or replaced with an invited admin account.
-- Database backups and restore test are complete.
-- HTTPS, headers, cookies, rate limits, and monitoring are verified.
+- Production credentials are stored as environment secrets.
+- The development password is replaced before launch.
+- A database backup and restore test are complete.
+- HTTPS, headers, cookies, login throttling, and basic error logging are verified.
 - Admin permissions and audit logs are tested.
 - Registration and check-in workflows are rehearsed on mobile and desktop.
 - Privacy notice, retention period, and support contact are visible.
-- A documented incident procedure exists for a leaked pass, compromised admin account, or database outage.
+- A short response procedure exists for a leaked pass, compromised admin account, or database failure.
 
 ## 12. Recommended First Implementation Slice
 
 The first code milestone should be the backend boundary, not more dashboard styling:
 
-1. Create the application and PostgreSQL schema for `Event`, `Registration`, `Pass`, `AdminUser`, `CheckIn`, and `AuditLog`.
+1. Create the small backend and SQLite schema for `Event`, `Registration`, `Pass`, `AdminUser`, `CheckIn`, and `AuditLog`.
 2. Implement `POST /api/events/:eventId/registrations` with validation, rate limiting, duplicate protection, and pass issuance.
 3. Replace the static success screen with the server response and a real QR code.
-4. Add integration tests proving that a second registration cannot overwrite the first and that the raw token is never stored.
+4. Add focused tests proving that a second registration cannot overwrite the first and that the raw token is never stored.
 
 This slice proves the core trust model early. The existing visual design can then be retained while each screen is connected to a real, testable source of truth.

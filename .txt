@@ -1,3 +1,0 @@
-user side - entering details, QR generation
-
-admin side - admin login, database viewing, verification of valid registrations, admin powers to manually removing invalid registrations, QR scanner (accept / sendback)
