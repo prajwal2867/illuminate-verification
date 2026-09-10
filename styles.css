@@ -838,12 +838,27 @@ input[aria-invalid="true"] {
 }
 
 .table-action-danger {
-  color: var(--error);
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  color: #ffffff;
   border-color: #e5c7c7;
+  background: var(--error);
+  place-items: center;
 }
 
 .table-action-danger:hover {
-  background: #fff5f5;
+  background: #963737;
+}
+
+.table-action-danger svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 2.5;
 }
 
 .registration-detail-cell {

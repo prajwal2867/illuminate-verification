@@ -301,12 +301,15 @@ function renderRegistrations(registrations) {
     const removeButton = document.createElement('button');
     removeButton.className = 'table-action table-action-danger';
     removeButton.type = 'button';
-    removeButton.textContent = 'Remove fraud';
+    removeButton.setAttribute('aria-label', 'Reject registration');
+    removeButton.title = 'Reject registration';
+    removeButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6 18 18M18 6 6 18"></path></svg>';
     actionsCell.appendChild(removeButton);
     row.appendChild(actionsCell);
     removeButton.addEventListener('click', async () => {
       removeButton.disabled = true;
-      removeButton.textContent = 'Removing...';
+      removeButton.setAttribute('aria-label', 'Rejecting registration');
+      removeButton.title = 'Rejecting registration';
       const response = await fetch(`${apiBase}/api/admin/registrations/${registration.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -318,7 +321,8 @@ function renderRegistrations(registrations) {
         const result = await response.json();
         registrationsStatus.textContent = result.error || 'Registration could not be removed.';
         removeButton.disabled = false;
-        removeButton.textContent = 'Remove fraud';
+        removeButton.setAttribute('aria-label', 'Reject registration');
+        removeButton.title = 'Reject registration';
       }
     });
     registrationsBody.appendChild(row);
