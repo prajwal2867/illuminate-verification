@@ -693,6 +693,13 @@ input[aria-invalid="true"] {
   margin-bottom: 16px;
 }
 
+.dashboard-status {
+  min-height: 18px;
+  margin: -4px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .view-kicker {
   margin: 0 0 6px;
   color: var(--accent-deep);
@@ -740,6 +747,13 @@ input[aria-invalid="true"] {
   font-size: 13px;
 }
 
+.registration-table td:nth-child(2),
+.registration-table td:nth-child(3) {
+  color: var(--ink);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .registration-table td:first-child {
   color: var(--ink);
 }
@@ -749,6 +763,73 @@ input[aria-invalid="true"] {
   margin-top: 4px;
   color: var(--muted);
   font-size: 11px;
+}
+
+.registration-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.table-action {
+  padding: 7px 9px;
+  color: var(--accent-deep);
+  border: 1px solid #cbd3e8;
+  border-radius: 7px;
+  background: var(--paper);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.table-action:hover {
+  background: var(--accent-soft);
+}
+
+.table-action-danger {
+  color: var(--error);
+  border-color: #e5c7c7;
+}
+
+.table-action-danger:hover {
+  background: #fff5f5;
+}
+
+.registration-detail-cell {
+  padding: 18px !important;
+  background: #f8f9fc;
+}
+
+.registration-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 170px;
+  align-items: center;
+  gap: 10px 18px;
+}
+
+.registration-detail-grid p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.registration-detail-grid p strong {
+  color: var(--ink);
+}
+
+.admin-qr-image {
+  grid-row: span 2;
+  width: 150px;
+  height: 150px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.empty-table-message {
+  color: var(--muted) !important;
+  text-align: center;
 }
 
 .status-badge {
@@ -778,6 +859,29 @@ input[aria-invalid="true"] {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #f8f9fc;
+}
+
+.scanner-camera-wrap {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.scanner-video {
+  width: 230px;
+  height: 230px;
+  border: 2px solid var(--accent);
+  border-radius: 16px;
+  object-fit: cover;
+}
+
+.scanner-camera-status {
+  max-width: 230px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
 }
 
 .scanner-frame {
@@ -833,6 +937,12 @@ input[aria-invalid="true"] {
   font-weight: 700;
 }
 
+.camera-button {
+  min-height: 42px;
+  margin-bottom: 22px;
+  padding: 0 14px;
+}
+
 .scan-button:hover {
   background: var(--accent-deep);
 }
@@ -847,6 +957,18 @@ input[aria-invalid="true"] {
 
 .scanner-status.is-success {
   color: #38735c;
+}
+
+.verification-details {
+  margin-top: 14px;
+  padding: 12px;
+  color: #38735c;
+  border: 1px solid #cce8da;
+  border-radius: 8px;
+  background: #f0faf5;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 @media (max-width: 560px) {
@@ -915,6 +1037,23 @@ input[aria-invalid="true"] {
   .registration-table th:nth-child(2),
   .registration-table td:nth-child(2) {
     display: none;
+  }
+
+  .registration-table th:nth-child(3),
+  .registration-table td:nth-child(3) {
+    display: none;
+  }
+
+  .registration-actions {
+    flex-direction: column;
+  }
+
+  .registration-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-qr-image {
+    grid-row: auto;
   }
 
   .scanner-panel {

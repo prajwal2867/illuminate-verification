@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import QRCode from 'qrcode';
 
@@ -14,6 +14,12 @@ const eventId = 'illuminate-2026';
 const maxBodyBytes = 12_000;
 const registrationWindowMs = 60_000;
 const registrationAttempts = new Map();
+const sessions = new Map();
+const adminEmail = process.env.ADMIN_EMAIL || 'test@example.com';
+const adminPassword = process.env.ADMIN_PASSWORD || '28672867';
+const encryptionKey = createHash('sha256')
+  .update(process.env.PASS_ENCRYPTION_KEY || 'local-development-pass-encryption-key')
+  .digest();
 
 if (!existsSync(dataDirectory)) {
   mkdirSync(dataDirectory, { recursive: true });
@@ -47,7 +53,8 @@ database.exec(`
     token_hash TEXT NOT NULL UNIQUE,
     status TEXT NOT NULL DEFAULT 'active',
     issued_at TEXT NOT NULL,
-    expires_at TEXT
+    expires_at TEXT,
+    qr_payload_encrypted TEXT
   );
   CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
@@ -56,6 +63,12 @@ database.exec(`
     created_at TEXT NOT NULL
   );
 `);
+
+try {
+  database.exec('ALTER TABLE passes ADD COLUMN qr_payload_encrypted TEXT');
+} catch {
+  // Existing databases already have the column.
+}
 
 database.prepare(`
   INSERT INTO events (id, name, starts_at, status)
@@ -81,6 +94,57 @@ function sendJson(response, status, body) {
 
 function sendError(response, status, message) {
   sendJson(response, status, { error: message });
+}
+
+function getCookies(request) {
+  return Object.fromEntries((request.headers.cookie || '').split(';').filter(Boolean).map((part) => {
+    const [name, ...value] = part.trim().split('=');
+    return [name, decodeURIComponent(value.join('='))];
+  }));
+}
+
+function getAdminSession(request) {
+  const sessionId = getCookies(request).admin_session;
+  if (!sessionId) {
+    return null;
+  }
+  const session = sessions.get(sessionId);
+  if (!session || session.expiresAt < Date.now()) {
+    sessions.delete(sessionId);
+    return null;
+  }
+  return session;
+}
+
+function requireAdmin(request, response) {
+  const session = getAdminSession(request);
+  if (!session) {
+    sendError(response, 401, 'Admin authentication is required.');
+    return null;
+  }
+  return session;
+}
+
+function encryptPayload(payload) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', encryptionKey, iv);
+  const encrypted = Buffer.concat([cipher.update(payload, 'utf8'), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString('base64url');
+}
+
+function decryptPayload(value) {
+  const packed = Buffer.from(value, 'base64url');
+  const decipher = createDecipheriv('aes-256-gcm', encryptionKey, packed.subarray(0, 12));
+  decipher.setAuthTag(packed.subarray(12, 28));
+  return Buffer.concat([decipher.update(packed.subarray(28)), decipher.final()]).toString('utf8');
+}
+
+function setSessionCookie(response, sessionId) {
+  response.setHeader('Set-Cookie', `admin_session=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+}
+
+function clearSessionCookie(response) {
+  response.setHeader('Set-Cookie', 'admin_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
 }
 
 function normalizeRegistration(input) {
@@ -177,9 +241,9 @@ async function handleRegistration(request, response) {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(registrationId, eventId, registration.name, registration.email, registration.phone, registration.illuminateId, createdAt);
     database.prepare(`
-      INSERT INTO passes (id, registration_id, token_hash, issued_at)
-      VALUES (?, ?, ?, ?)
-    `).run(passId, registrationId, tokenHash, createdAt);
+      INSERT INTO passes (id, registration_id, token_hash, issued_at, qr_payload_encrypted)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(passId, registrationId, tokenHash, createdAt, encryptPayload(qrPayload));
     database.prepare(`
       INSERT INTO audit_logs (id, action, entity_id, created_at)
       VALUES (?, 'registration_created', ?, ?)
@@ -193,6 +257,160 @@ async function handleRegistration(request, response) {
 
   const qrDataUrl = await QRCode.toDataURL(qrPayload, { errorCorrectionLevel: 'M', margin: 2, width: 280 });
   sendJson(response, 201, { name: registration.name, illuminateId: registration.illuminateId, passId, qrDataUrl });
+}
+
+async function handleAdminLogin(request, response) {
+  let input;
+  try {
+    input = JSON.parse(await readRequestBody(request));
+  } catch {
+    sendError(response, 400, 'Invalid login request.');
+    return;
+  }
+  const email = String(input.email || '').trim().toLowerCase();
+  const password = String(input.password || '');
+  const emailMatch = email === adminEmail.toLowerCase();
+  const passwordMatch = timingSafeEqual(
+    createHash('sha256').update(password).digest(),
+    createHash('sha256').update(adminPassword).digest()
+  );
+  if (!emailMatch || !passwordMatch) {
+    sendError(response, 401, 'Those admin credentials are not recognized.');
+    return;
+  }
+  const sessionId = randomBytes(32).toString('base64url');
+  sessions.set(sessionId, { name: 'Event Administrator', expiresAt: Date.now() + 8 * 60 * 60 * 1000 });
+  setSessionCookie(response, sessionId);
+  sendJson(response, 200, { name: 'Event Administrator' });
+}
+
+function handleAdminLogout(request, response) {
+  const sessionId = getCookies(request).admin_session;
+  if (sessionId) {
+    sessions.delete(sessionId);
+  }
+  clearSessionCookie(response);
+  sendJson(response, 200, { ok: true });
+}
+
+async function handleAdminRegistrations(request, response) {
+  if (!requireAdmin(request, response)) {
+    return;
+  }
+  const rows = database.prepare(`
+    SELECT r.id, r.name, r.email, r.phone, r.illuminate_id AS illuminateId,
+      r.status, r.created_at AS createdAt, p.id AS passId, p.status AS passStatus,
+      p.qr_payload_encrypted AS encryptedQr
+    FROM registrations r
+    JOIN passes p ON p.registration_id = r.id
+    WHERE r.event_id = ? AND r.status != 'removed'
+    ORDER BY r.created_at DESC
+  `).all(eventId).map((row) => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    illuminateId: row.illuminateId,
+    status: row.status,
+    createdAt: row.createdAt,
+    passId: row.passId,
+    passStatus: row.passStatus,
+    encryptedQr: row.encryptedQr
+  }));
+  const registrations = await Promise.all(rows.map(async (row) => ({
+    ...row,
+    qrDataUrl: row.encryptedQr
+      ? await QRCode.toDataURL(decryptPayload(row.encryptedQr), { errorCorrectionLevel: 'M', margin: 2, width: 220 })
+      : null
+  })));
+  registrations.forEach((row) => delete row.encryptedQr);
+  sendJson(response, 200, { registrations });
+}
+
+async function handleRemoveRegistration(request, response, registrationId) {
+  if (!requireAdmin(request, response)) {
+    return;
+  }
+  let input = {};
+  try {
+    input = JSON.parse(await readRequestBody(request));
+  } catch {
+    sendError(response, 400, 'Invalid removal request.');
+    return;
+  }
+  const reason = String(input.reason || '').trim();
+  if (reason.length < 3 || reason.length > 250) {
+    sendError(response, 400, 'A removal reason is required.');
+    return;
+  }
+  const registration = database.prepare('SELECT id FROM registrations WHERE id = ? AND event_id = ? AND status != \'removed\'').get(registrationId, eventId);
+  if (!registration) {
+    sendError(response, 404, 'Registration not found.');
+    return;
+  }
+  const now = new Date().toISOString();
+  database.exec('BEGIN');
+  try {
+    database.prepare('UPDATE registrations SET status = \'removed\' WHERE id = ?').run(registrationId);
+    database.prepare('UPDATE passes SET status = \'revoked\' WHERE registration_id = ?').run(registrationId);
+    database.prepare('INSERT INTO audit_logs (id, action, entity_id, created_at) VALUES (?, ?, ?, ?)').run(randomUUID(), `registration_removed: ${reason}`, registrationId, now);
+    database.exec('COMMIT');
+  } catch {
+    database.exec('ROLLBACK');
+    sendError(response, 500, 'Registration could not be removed.');
+    return;
+  }
+  sendJson(response, 200, { ok: true });
+}
+
+async function handleVerifyPass(request, response) {
+  if (!requireAdmin(request, response)) {
+    return;
+  }
+  let input;
+  try {
+    input = JSON.parse(await readRequestBody(request));
+  } catch {
+    sendError(response, 400, 'Invalid verification request.');
+    return;
+  }
+  const value = String(input.value || '').trim();
+  if (!value) {
+    sendError(response, 400, 'Enter or scan a pass.');
+    return;
+  }
+  let pass;
+  if (value.startsWith('EVP1.')) {
+    const token = value.split('.').pop();
+    pass = database.prepare(`
+      SELECT p.id AS passId, p.status AS passStatus, r.name, r.email, r.phone,
+        r.illuminate_id AS illuminateId, r.status
+      FROM passes p JOIN registrations r ON r.id = p.registration_id
+      WHERE p.token_hash = ? AND r.event_id = ?
+    `).get(createHash('sha256').update(token).digest('hex'), eventId);
+  } else {
+    pass = database.prepare(`
+      SELECT p.id AS passId, p.status AS passStatus, r.name, r.email, r.phone,
+        r.illuminate_id AS illuminateId, r.status
+      FROM passes p JOIN registrations r ON r.id = p.registration_id
+      WHERE p.id = ? AND r.event_id = ?
+    `).get(value.toUpperCase(), eventId);
+  }
+  if (!pass) {
+    sendJson(response, 404, { result: 'not_found', message: 'Pass not found.' });
+    return;
+  }
+  if (pass.status === 'removed' || pass.passStatus === 'revoked') {
+    sendJson(response, 403, { result: 'revoked', message: 'This pass was removed or revoked.', attendee: pass });
+    return;
+  }
+  if (pass.passStatus === 'used') {
+    sendJson(response, 409, { result: 'already_used', message: 'This pass has already been used.', attendee: pass });
+    return;
+  }
+  database.prepare('UPDATE passes SET status = \'used\' WHERE id = ?').run(pass.passId);
+  database.prepare('INSERT INTO audit_logs (id, action, entity_id, created_at) VALUES (?, ?, ?, ?)').run(randomUUID(), 'pass_checked_in', pass.passId, new Date().toISOString());
+  sendJson(response, 200, { result: 'accepted', message: 'Pass accepted. Entry recorded.', attendee: pass });
 }
 
 function serveStatic(request, response) {
@@ -211,6 +429,27 @@ function serveStatic(request, response) {
 }
 
 const server = createServer(async (request, response) => {
+  if (request.method === 'POST' && request.url === '/api/admin/login') {
+    await handleAdminLogin(request, response);
+    return;
+  }
+  if (request.method === 'POST' && request.url === '/api/admin/logout') {
+    handleAdminLogout(request, response);
+    return;
+  }
+  if (request.method === 'GET' && request.url === '/api/admin/registrations') {
+    await handleAdminRegistrations(request, response);
+    return;
+  }
+  if (request.method === 'POST' && request.url.startsWith('/api/admin/registrations/')) {
+    const registrationId = request.url.split('/')[4];
+    await handleRemoveRegistration(request, response, registrationId);
+    return;
+  }
+  if (request.method === 'POST' && request.url === '/api/admin/verify') {
+    await handleVerifyPass(request, response);
+    return;
+  }
   if (request.method === 'POST' && request.url === '/api/events/illuminate-2026/registrations') {
     await handleRegistration(request, response);
     return;

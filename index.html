@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content=" Registration Details with your Illuminate ID." />
-  <title>Event Registration</title>
+  <title>Illuminate Verification and Pass Access</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet" />
@@ -63,7 +63,7 @@
         </form>
 
         <div class="admin-link-row">
-          <button class="admin-link" id="open-admin-login" type="button" onclick="document.getElementById('registration-panel').hidden = true; document.getElementById('admin-overlay').hidden = false; document.getElementById('admin-email').focus();">Admin login</button>
+          <button class="admin-link" id="open-admin-login" type="button">Admin login</button>
         </div>
       </div>
     </section>
@@ -89,7 +89,7 @@
 
     <div class="admin-overlay" id="admin-overlay" hidden>
       <section class="admin-card" aria-labelledby="admin-title">
-        <button class="close-button" id="close-admin-login" type="button" aria-label="Return to registration" onclick="document.getElementById('admin-overlay').hidden = true; document.getElementById('registration-panel').hidden = false; document.getElementById('open-admin-login').focus();">&times;</button>
+        <button class="close-button" id="close-admin-login" type="button" aria-label="Return to registration">&times;</button>
         <div class="admin-card-content">
           <div class="admin-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" role="img" aria-label="Secure admin access">
@@ -118,7 +118,7 @@
             <button class="submit-button admin-submit" type="submit">Log in</button>
             <p class="admin-status" id="admin-status" role="status" aria-live="polite"></p>
           </form>
-          <p class="admin-account-note">Development account enabled for local testing.</p>
+          <p class="admin-account-note">Authorized event administrators only.</p>
         </div>
       </section>
     </div>

@@ -13,6 +13,14 @@ const dashboardViews = document.querySelectorAll('.dashboard-view');
 const verifyPassButton = document.querySelector('#verify-pass');
 const manualPass = document.querySelector('#manual-pass');
 const scannerStatus = document.querySelector('#scanner-status');
+const registrationsBody = document.querySelector('#registrations-body');
+const recordCount = document.querySelector('#record-count');
+const registrationsStatus = document.querySelector('#registrations-status');
+const startCameraButton = document.querySelector('#start-camera');
+const scannerVideo = document.querySelector('#scanner-video');
+const scannerFrame = document.querySelector('#scanner-frame');
+const scannerCameraStatus = document.querySelector('#scanner-camera-status');
+const verificationDetails = document.querySelector('#verification-details');
 const successPanel = document.querySelector('#registration-success');
 const successName = document.querySelector('#success-name');
 const getQrCodeButton = document.querySelector('#get-qr-code');
@@ -24,12 +32,8 @@ const submitButton = form.querySelector('button[type="submit"]');
 
 let registrationQrDataUrl = '';
 
-const ADMIN_ACCOUNT_LIMIT = 15;
-const DEVELOPMENT_ADMIN = {
-  email: 'test@example.com',
-  password: '28672867',
-  name: 'Test Admin'
-};
+let scannerStream = null;
+let scannerLoopActive = false;
 
 const fields = {
   name: {
@@ -161,6 +165,7 @@ function showDashboard() {
   registrationPanel.hidden = true;
   adminDashboard.hidden = false;
   document.title = 'Admin Dashboard | Illuminate Verification';
+  loadRegistrations();
 }
 
 function showRegistration() {
@@ -179,7 +184,7 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-adminLoginForm.addEventListener('submit', (event) => {
+adminLoginForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const email = document.querySelector('#admin-email');
   const password = document.querySelector('#admin-password');
@@ -198,16 +203,231 @@ adminLoginForm.addEventListener('submit', (event) => {
     return;
   }
 
-  if (email.value.trim().toLowerCase() !== DEVELOPMENT_ADMIN.email || password.value !== DEVELOPMENT_ADMIN.password) {
-    adminStatus.textContent = 'Those admin credentials are not recognized.';
-    password.setAttribute('aria-invalid', 'true');
-    password.focus();
+  const loginButton = adminLoginForm.querySelector('button[type="submit"]');
+  loginButton.disabled = true;
+  try {
+    const response = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.value, password: password.value })
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      adminStatus.textContent = result.error || 'Those admin credentials are not recognized.';
+      password.setAttribute('aria-invalid', 'true');
+      password.focus();
+      return;
+    }
+    document.querySelector('#admin-name').textContent = result.name;
+    adminLoginForm.reset();
+    showDashboard();
+  } catch {
+    adminStatus.textContent = 'The admin service is unavailable. Please try again.';
+  } finally {
+    loginButton.disabled = false;
+  }
+});
+
+function createCell(text, className = '') {
+  const cell = document.createElement('td');
+  cell.textContent = text;
+  if (className) {
+    cell.className = className;
+  }
+  return cell;
+}
+
+function renderRegistrationDetails(row, detailRow) {
+  const detailsCell = document.createElement('td');
+  detailsCell.colSpan = 4;
+  detailsCell.className = 'registration-detail-cell';
+  const detailGrid = document.createElement('div');
+  detailGrid.className = 'registration-detail-grid';
+  [['Email', row.email], ['Phone', row.phone], ['Illuminate ID', row.illuminateId], ['Pass ID', row.passId], ['Registered', new Date(row.createdAt).toLocaleString()]].forEach(([label, value]) => {
+    const item = document.createElement('p');
+    const title = document.createElement('strong');
+    title.textContent = `${label}: `;
+    item.append(title, document.createTextNode(value));
+    detailGrid.appendChild(item);
+  });
+  const qrImage = document.createElement('img');
+  qrImage.className = 'admin-qr-image';
+  qrImage.src = row.qrDataUrl;
+  qrImage.alt = `QR code for ${row.name}`;
+  detailGrid.appendChild(qrImage);
+  detailsCell.appendChild(detailGrid);
+  detailRow.replaceChildren(detailsCell);
+}
+
+function renderRegistrations(registrations) {
+  registrationsBody.replaceChildren();
+  recordCount.textContent = `${registrations.length} ${registrations.length === 1 ? 'record' : 'records'}`;
+  if (!registrations.length) {
+    const row = document.createElement('tr');
+    const cell = createCell('No current registrations.', 'empty-table-message');
+    cell.colSpan = 4;
+    row.appendChild(cell);
+    registrationsBody.appendChild(row);
     return;
   }
+  registrations.forEach((registration) => {
+    const row = document.createElement('tr');
+    row.dataset.registrationId = registration.id;
+    const attendeeCell = document.createElement('td');
+    const name = document.createElement('strong');
+    name.textContent = registration.name;
+    const contact = document.createElement('span');
+    contact.textContent = registration.email;
+    attendeeCell.append(name, contact);
+    row.append(attendeeCell, createCell(registration.illuminateId), createCell(registration.passId));
+    const actionsCell = document.createElement('td');
+    actionsCell.className = 'registration-actions';
+    const viewButton = document.createElement('button');
+    viewButton.className = 'table-action';
+    viewButton.type = 'button';
+    viewButton.textContent = 'View details';
+    const removeButton = document.createElement('button');
+    removeButton.className = 'table-action table-action-danger';
+    removeButton.type = 'button';
+    removeButton.textContent = 'Remove fraud';
+    actionsCell.append(viewButton, removeButton);
+    row.appendChild(actionsCell);
+    const detailRow = document.createElement('tr');
+    detailRow.hidden = true;
+    viewButton.addEventListener('click', () => {
+      detailRow.hidden = !detailRow.hidden;
+      if (!detailRow.hidden) {
+        renderRegistrationDetails(registration, detailRow);
+      }
+      viewButton.textContent = detailRow.hidden ? 'View details' : 'Hide details';
+    });
+    removeButton.addEventListener('click', async () => {
+      const reason = window.prompt(`Why should ${registration.name}'s registration be removed?`, 'Fraudulent registration');
+      if (!reason) {
+        return;
+      }
+      removeButton.disabled = true;
+      const response = await fetch(`/api/admin/registrations/${registration.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+      });
+      if (response.ok) {
+        loadRegistrations();
+      } else {
+        const result = await response.json();
+        registrationsStatus.textContent = result.error || 'Registration could not be removed.';
+        removeButton.disabled = false;
+      }
+    });
+    registrationsBody.append(row, detailRow);
+  });
+}
 
-  document.querySelector('#admin-name').textContent = DEVELOPMENT_ADMIN.name;
-  adminLoginForm.reset();
-  showDashboard();
+async function loadRegistrations() {
+  registrationsStatus.textContent = 'Loading registrations...';
+  try {
+    const response = await fetch('/api/admin/registrations');
+    const result = await response.json();
+    if (response.status === 401) {
+      showRegistration();
+      showAdminLogin();
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(result.error);
+    }
+    renderRegistrations(result.registrations);
+    registrationsStatus.textContent = '';
+  } catch (error) {
+    registrationsStatus.textContent = error.message || 'Registrations could not be loaded.';
+  }
+}
+
+async function verifyPass(value) {
+  scannerStatus.classList.remove('is-success');
+  verificationDetails.hidden = true;
+  scannerStatus.textContent = 'Checking pass...';
+  const response = await fetch('/api/admin/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value })
+  });
+  const result = await response.json();
+  scannerStatus.textContent = result.message || 'Pass could not be verified.';
+  scannerStatus.classList.toggle('is-success', result.result === 'accepted');
+  if (result.attendee) {
+    verificationDetails.textContent = `${result.attendee.name} | ${result.attendee.email} | ${result.attendee.illuminateId}`;
+    verificationDetails.hidden = false;
+  }
+}
+
+adminLogout.addEventListener('click', async () => {
+  stopCamera();
+  await fetch('/api/admin/logout', { method: 'POST' });
+  showRegistration();
+});
+
+verifyPassButton.addEventListener('click', async () => {
+  const value = manualPass.value.trim();
+  if (!value) {
+    scannerStatus.textContent = 'Enter a Pass ID or QR value first.';
+    return;
+  }
+  try {
+    await verifyPass(value);
+  } catch {
+    scannerStatus.textContent = 'The verification service is unavailable.';
+  }
+});
+
+function stopCamera() {
+  scannerLoopActive = false;
+  if (scannerStream) {
+    scannerStream.getTracks().forEach((track) => track.stop());
+    scannerStream = null;
+  }
+  scannerVideo.hidden = true;
+  scannerFrame.hidden = false;
+  startCameraButton.textContent = 'Start camera scanner';
+}
+
+async function startCamera() {
+  if (!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia) {
+    scannerCameraStatus.textContent = 'Camera scanning is not supported here. Use manual Pass ID entry.';
+    return;
+  }
+  try {
+    scannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    scannerVideo.srcObject = scannerStream;
+    await scannerVideo.play();
+    scannerVideo.hidden = false;
+    scannerFrame.hidden = true;
+    scannerLoopActive = true;
+    startCameraButton.textContent = 'Stop camera scanner';
+    scannerCameraStatus.textContent = 'Camera active. Hold a QR code in view.';
+    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+    while (scannerLoopActive) {
+      const codes = await detector.detect(scannerVideo);
+      if (codes[0]?.rawValue) {
+        manualPass.value = codes[0].rawValue;
+        await verifyPass(codes[0].rawValue);
+        stopCamera();
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+    }
+  } catch {
+    stopCamera();
+    scannerCameraStatus.textContent = 'Camera access was unavailable. Use manual Pass ID entry.';
+  }
+}
+
+startCameraButton.addEventListener('click', () => {
+  if (scannerStream) {
+    stopCamera();
+    return;
+  }
+  startCamera();
 });
 
 dashboardTabs.forEach((tab) => {
@@ -222,12 +442,3 @@ dashboardTabs.forEach((tab) => {
   });
 });
 
-adminLogout.addEventListener('click', showRegistration);
-
-verifyPassButton.addEventListener('click', () => {
-  const passId = manualPass.value.trim().toUpperCase();
-  scannerStatus.textContent = passId === 'ILL-2048' || passId === 'ILL-2054'
-    ? `${passId} is verified and ready for entry.`
-    : 'Pass not found. Check the ID and try again.';
-  scannerStatus.classList.toggle('is-success', passId === 'ILL-2048' || passId === 'ILL-2054');
-});
