@@ -14,7 +14,6 @@ const eventId = 'illuminate-2026';
 const maxBodyBytes = 12_000;
 const registrationWindowMs = 60_000;
 const registrationAttempts = new Map();
-const loginAttempts = new Map();
 const sessionDurationMs = 8 * 60 * 60 * 1000;
 const encryptionSecret = process.env.PASS_ENCRYPTION_KEY;
 if (!encryptionSecret) {
@@ -427,10 +426,6 @@ async function handleAdminLogin(request, response) {
   }
   const email = String(input.email || '').trim().toLowerCase();
   const password = String(input.password || '');
-  if (isRateLimited(loginAttempts, `${getClientKey(request)}:${email}`, 5, 15 * 60 * 1000)) {
-    sendError(response, 429, 'Too many login attempts. Please try again later.');
-    return;
-  }
   const account = database.prepare(`
     SELECT id, email, password_hash AS passwordHash, display_name AS name
     FROM admin_users

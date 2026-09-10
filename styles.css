@@ -917,9 +917,9 @@ input[aria-invalid="true"] {
 
 .scanner-panel {
   display: grid;
-  grid-template-columns: 230px 1fr;
-  align-items: center;
-  gap: 42px;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 28px;
   padding: 30px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -968,6 +968,10 @@ input[aria-invalid="true"] {
 
 .scanner-copy h3 {
   margin-bottom: 10px;
+}
+
+.scanner-copy {
+  width: min(100%, 620px);
 }
 
 .scanner-copy > p:not(.view-kicker):not(.scanner-status) {
