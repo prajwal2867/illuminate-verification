@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content=" Registration Details with your Illuminate ID." />
+  <title>Event Registration</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="app.js?v=2" defer></script>
+</head>
+<body>
+  <main class="page-shell">
+    <section class="registration-card" id="registration-panel" aria-labelledby="page-title">
+      <div class="card-accent" aria-hidden="true"></div>
+      <div class="card-content">
+        <header class="card-header">
+          <div class="header-topline">
+            <div class="brand-mark" aria-hidden="true">IV</div>
+            <p class="step-indicator"><span></span><span aria-hidden="true"></span><span></span></p>
+          </div>
+          <p class="eyebrow">Illuminate verification</p>
+          <h1 id="page-title">Registration Details</h1>
+          <p class="intro">Create your event pass with the same details you used when registering for Illuminate.</p>
+          <div class="quick-note"><span class="quick-note-icon" aria-hidden="true">&#10003;</span> Takes less than a minute</div>
+        </header>
+
+        <form id="registration-form" novalidate>
+          <div class="field-group">
+            <div class="field">
+              <label for="name">Name</label>
+              <input id="name" name="name" type="text" autocomplete="name" required minlength="2" />
+              <p class="field-error" id="name-error" aria-live="polite"></p>
+            </div>
+
+            <div class="field">
+              <label for="email">Email</label>
+              <input id="email" name="email" type="email" autocomplete="email" required />
+              <p class="field-error" id="email-error" aria-live="polite"></p>
+            </div>
+
+            <div class="field">
+              <label for="phone">Phone number</label>
+              <input id="phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required />
+              <p class="field-error" id="phone-error" aria-live="polite"></p>
+            </div>
+
+            <div class="field">
+              <label for="illuminate-id">Illuminate ID</label>
+              <input id="illuminate-id" name="illuminateId" type="text" autocomplete="off" required />
+              <p class="field-error" id="illuminate-id-error" aria-live="polite"></p>
+            </div>
+          </div>
+
+          <p class="privacy-note">Your information will only be used to create a temporary e-verifiable pass for your event.</p>
+          <button class="submit-button" type="submit">
+            <span>Submit registration</span>
+            <span class="button-arrow" aria-hidden="true">&#8594;</span>
+          </button>
+          <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
+        </form>
+
+        <div class="admin-link-row">
+          <button class="admin-link" id="open-admin-login" type="button" onclick="document.getElementById('registration-panel').hidden = true; document.getElementById('admin-overlay').hidden = false; document.getElementById('admin-email').focus();">Admin login</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="admin-overlay" id="admin-overlay" hidden>
+      <section class="admin-card" aria-labelledby="admin-title">
+        <button class="close-button" id="close-admin-login" type="button" aria-label="Return to registration" onclick="document.getElementById('admin-overlay').hidden = true; document.getElementById('registration-panel').hidden = false; document.getElementById('open-admin-login').focus();">&times;</button>
+        <div class="admin-card-content">
+          <div class="admin-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img" aria-label="Secure admin access">
+              <path d="M12 3.2 19 6v5.2c0 4.4-2.8 7.9-7 9.6-4.2-1.7-7-5.2-7-9.6V6l7-2.8Z"></path>
+            </svg>
+          </div>
+          <p class="eyebrow">Illuminate verification</p>
+          <h2 id="admin-title">Admin login</h2>
+          <p class="admin-intro">Sign in with your provided admin credentials to access the verification panel.</p>
+
+          <form id="admin-login-form" novalidate>
+            <div class="field-group admin-field-group">
+              <div class="field">
+                <label for="admin-email">Provided email</label>
+                <input id="admin-email" name="adminEmail" type="email" autocomplete="username" required />
+                <p class="field-error" id="admin-email-error" aria-live="polite"></p>
+              </div>
+
+              <div class="field">
+                <label for="admin-password">Password</label>
+                <input id="admin-password" name="adminPassword" type="password" autocomplete="current-password" required />
+                <p class="field-error" id="admin-password-error" aria-live="polite"></p>
+              </div>
+            </div>
+
+            <button class="submit-button admin-submit" type="submit">Log in</button>
+            <p class="admin-status" id="admin-status" role="status" aria-live="polite"></p>
+          </form>
+          <p class="admin-account-note">Access is limited to the 15 authorized admin accounts.</p>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
