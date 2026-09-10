@@ -149,8 +149,12 @@ body::after {
   margin-top: 4px;
 }
 
+.qr-button[hidden] {
+  display: none;
+}
+
 .qr-result {
-  margin-top: 6px;
+  margin-top: 22px;
 }
 
 .qr-result[hidden] {
@@ -158,13 +162,10 @@ body::after {
 }
 
 .qr-code {
-  display: grid;
-  grid-template-columns: repeat(17, 8px);
-  grid-template-rows: repeat(18, 8px);
-  width: max-content;
+  width: min(304px, 100%);
   margin: 0 auto;
-  padding: 12px;
-  border: 8px solid #ffffff;
+  padding: 10px;
+  border: 1px solid var(--line);
   outline: 1px solid var(--line);
   background: #ffffff;
 }
@@ -175,18 +176,49 @@ body::after {
 
 .qr-code img {
   display: block;
-  width: 280px;
-  height: 280px;
+  width: 100%;
+  height: auto;
 }
 
 .qr-label {
-  margin: 18px 0 0;
+  margin: 14px 0 0;
   color: var(--muted);
   font-size: 12px;
 }
 
 .qr-label strong {
   color: var(--ink);
+}
+
+.qr-reminder {
+  max-width: 280px;
+  margin: 12px auto 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.download-qr-button {
+  min-height: 42px;
+  margin-top: 16px;
+  padding: 0 18px;
+  color: var(--accent-deep);
+  border: 1px solid #cbd3e8;
+  border-radius: 9px;
+  background: var(--paper);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.download-qr-button:hover {
+  background: var(--accent-soft);
+}
+
+.download-qr-button:focus-visible {
+  outline: 3px solid #c3cdf0;
+  outline-offset: 3px;
 }
 
 .card-accent {
@@ -421,7 +453,8 @@ input[aria-invalid="true"] {
 .admin-link-row {
   display: flex;
   justify-content: flex-end;
-  margin-top: 18px;
+  margin-top: 30px;
+  padding-top: 4px;
 }
 
 .admin-link {

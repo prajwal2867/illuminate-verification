@@ -19,6 +19,7 @@ const getQrCodeButton = document.querySelector('#get-qr-code');
 const qrResult = document.querySelector('#qr-result');
 const qrCode = document.querySelector('#qr-code');
 const qrPassId = document.querySelector('#qr-pass-id');
+const downloadQrButton = document.querySelector('#download-qr-code');
 const submitButton = form.querySelector('button[type="submit"]');
 
 let registrationQrDataUrl = '';
@@ -131,6 +132,16 @@ getQrCodeButton.addEventListener('click', () => {
   qrCode.replaceChildren(image);
   qrResult.hidden = false;
   getQrCodeButton.hidden = true;
+});
+
+downloadQrButton.addEventListener('click', () => {
+  if (!registrationQrDataUrl) {
+    return;
+  }
+  const downloadLink = document.createElement('a');
+  downloadLink.href = registrationQrDataUrl;
+  downloadLink.download = `${qrPassId.textContent || 'event-pass'}-qr.png`;
+  downloadLink.click();
 });
 
 function showAdminLogin() {
