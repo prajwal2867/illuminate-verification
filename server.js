@@ -376,7 +376,7 @@ async function handleRegistration(request, response) {
   }
 
   const existing = database.prepare(
-    'SELECT id FROM registrations WHERE event_id = ? AND illuminate_id = ?'
+    'SELECT id FROM registrations WHERE event_id = ? AND illuminate_id = ? AND status != \'removed\''
   ).get(eventId, registration.illuminateId);
   if (existing) {
     sendError(response, 409, 'This Illuminate ID has already been registered.');
@@ -403,8 +403,12 @@ async function handleRegistration(request, response) {
     `).run(passId, registrationId, tokenHash, createdAt, expiresAt, encryptPayload(qrPayload));
     writeAudit('registration_created', registrationId, null, { metadata: { eventId } });
     database.exec('COMMIT');
-  } catch {
+  } catch (error) {
     database.exec('ROLLBACK');
+    if (String(error.message || '').includes('UNIQUE constraint failed: registrations.event_id, registrations.illuminate_id')) {
+      sendError(response, 409, 'This Illuminate ID has already been registered.');
+      return;
+    }
     sendError(response, 500, 'Registration could not be completed.');
     return;
   }
