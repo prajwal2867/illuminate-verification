@@ -175,10 +175,16 @@ function ensureConfiguredAdmin() {
 ensureConfiguredAdmin();
 
 database.prepare(`
-  INSERT INTO events (id, name, starts_at, status)
-  VALUES (?, ?, ?, 'open')
+  INSERT INTO events (id, name, status)
+  VALUES (?, ?, 'open')
   ON CONFLICT(id) DO NOTHING
-`).run(eventId, 'Illuminate Verification', '2026-12-31T18:00:00.000Z');
+`).run(eventId, 'Illuminate Verification');
+
+// Clear the original placeholder date from local development databases.
+database.prepare(`
+  UPDATE events SET starts_at = NULL, ends_at = NULL
+  WHERE id = ? AND starts_at = '2026-12-31T18:00:00.000Z'
+`).run(eventId);
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',

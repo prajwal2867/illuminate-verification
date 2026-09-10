@@ -366,7 +366,7 @@ async function verifyPass(value) {
   scannerStatus.textContent = result.message || 'Pass could not be verified.';
   scannerStatus.classList.toggle('is-success', result.result === 'accepted');
   if (result.attendee) {
-    verificationDetails.textContent = `${result.attendee.name} | ${result.attendee.email} | ${result.attendee.illuminateId}`;
+    verificationDetails.textContent = `${result.attendee.name} -- ${result.attendee.illuminateId}`;
     verificationDetails.hidden = false;
   }
 }

@@ -951,9 +951,9 @@ input[aria-invalid="true"] {
   width: 230px;
   height: 230px;
   padding: 22px;
-  border: 1px solid #c6cbd4;
+  border: 0;
   border-radius: 16px;
-  background: #d7dbe2;
+  background: transparent;
   place-items: center;
 }
 
