@@ -153,6 +153,12 @@ body::after {
   background: var(--ink);
 }
 
+.qr-code img {
+  display: block;
+  width: 280px;
+  height: 280px;
+}
+
 .qr-label {
   margin: 18px 0 0;
   color: var(--muted);
@@ -356,6 +362,12 @@ input[aria-invalid="true"] {
   background: var(--accent-deep);
   box-shadow: 0 10px 20px rgba(82, 106, 176, 0.28);
   transform: translateY(-1px);
+}
+
+.submit-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+  transform: none;
 }
 
 .submit-button:focus-visible {

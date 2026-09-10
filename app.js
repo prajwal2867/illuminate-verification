@@ -19,6 +19,9 @@ const getQrCodeButton = document.querySelector('#get-qr-code');
 const qrResult = document.querySelector('#qr-result');
 const qrCode = document.querySelector('#qr-code');
 const qrPassId = document.querySelector('#qr-pass-id');
+const submitButton = form.querySelector('button[type="submit"]');
+
+let registrationQrDataUrl = '';
 
 const ADMIN_ACCOUNT_LIMIT = 15;
 const DEVELOPMENT_ADMIN = {
@@ -66,7 +69,7 @@ Object.values(fields).forEach((field) => {
   });
 });
 
-form.addEventListener('submit', (event) => {
+form.addEventListener('submit', async (event) => {
   event.preventDefault();
   statusMessage.textContent = '';
 
@@ -77,38 +80,53 @@ form.addEventListener('submit', (event) => {
     return;
   }
 
-  const submittedName = fields.name.input.value.trim();
-  const submittedPassId = fields.illuminateId.input.value.trim().toUpperCase();
-  successName.textContent = submittedName;
-  qrPassId.textContent = submittedPassId;
-  qrResult.hidden = true;
-  getQrCodeButton.hidden = false;
-  registrationPanel.hidden = true;
-  successPanel.hidden = false;
-  document.title = 'Registration Successful | Illuminate Verification';
-  successPanel.querySelector('#success-title').focus();
+  submitButton.disabled = true;
+  submitButton.setAttribute('aria-busy', 'true');
+  statusMessage.textContent = 'Creating your event pass...';
+
+  try {
+    const response = await fetch('/api/events/illuminate-2026/registrations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: fields.name.input.value,
+        email: fields.email.input.value,
+        phone: fields.phone.input.value,
+        illuminateId: fields.illuminateId.input.value
+      })
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      statusMessage.textContent = result.error || 'Registration could not be completed.';
+      return;
+    }
+
+    registrationQrDataUrl = result.qrDataUrl;
+    successName.textContent = result.name;
+    qrPassId.textContent = result.passId;
+    qrResult.hidden = true;
+    getQrCodeButton.hidden = false;
+    registrationPanel.hidden = true;
+    successPanel.hidden = false;
+    document.title = 'Registration Successful | Illuminate Verification';
+    successPanel.querySelector('#success-title').focus();
+  } catch {
+    statusMessage.textContent = 'The service is unavailable. Please try again shortly.';
+  } finally {
+    submitButton.disabled = false;
+    submitButton.removeAttribute('aria-busy');
+  }
 });
 
 getQrCodeButton.addEventListener('click', () => {
-  qrCode.innerHTML = '';
-  const pattern = [
-    '11111010010111111', '10001011110110001', '10101010100110101',
-    '10101001110110101', '10001011010110001', '11111010101011111',
-    '00000001101100000', '11010110110010110', '01101101001101101',
-    '10110011110110011', '01001100101001100', '00000010110110000',
-    '11111010001110111', '10001011101010001', '10101000110110101',
-    '10101011010110101', '10001001100110001', '11111010101011111'
-  ];
-  pattern.forEach((row, rowIndex) => {
-    [...row].forEach((cell, columnIndex) => {
-      if (cell === '1') {
-        const block = document.createElement('span');
-        block.style.gridRow = rowIndex + 1;
-        block.style.gridColumn = columnIndex + 1;
-        qrCode.appendChild(block);
-      }
-    });
-  });
+  if (!registrationQrDataUrl) {
+    return;
+  }
+  const image = document.createElement('img');
+  image.src = registrationQrDataUrl;
+  image.alt = `QR code for pass ${qrPassId.textContent}`;
+  qrCode.replaceChildren(image);
   qrResult.hidden = false;
   getQrCodeButton.hidden = true;
 });
