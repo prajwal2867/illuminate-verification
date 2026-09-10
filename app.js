@@ -13,6 +13,12 @@ const dashboardViews = document.querySelectorAll('.dashboard-view');
 const verifyPassButton = document.querySelector('#verify-pass');
 const manualPass = document.querySelector('#manual-pass');
 const scannerStatus = document.querySelector('#scanner-status');
+const successPanel = document.querySelector('#registration-success');
+const successName = document.querySelector('#success-name');
+const getQrCodeButton = document.querySelector('#get-qr-code');
+const qrResult = document.querySelector('#qr-result');
+const qrCode = document.querySelector('#qr-code');
+const qrPassId = document.querySelector('#qr-pass-id');
 
 const ADMIN_ACCOUNT_LIMIT = 15;
 const DEVELOPMENT_ADMIN = {
@@ -71,10 +77,40 @@ form.addEventListener('submit', (event) => {
     return;
   }
 
-  const submitButton = form.querySelector('button[type="submit"]');
-  submitButton.disabled = true;
-  submitButton.querySelector('span').textContent = 'Registration submitted';
-  statusMessage.textContent = 'Thank you. Your registration has been received.';
+  const submittedName = fields.name.input.value.trim();
+  const submittedPassId = fields.illuminateId.input.value.trim().toUpperCase();
+  successName.textContent = submittedName;
+  qrPassId.textContent = submittedPassId;
+  qrResult.hidden = true;
+  getQrCodeButton.hidden = false;
+  registrationPanel.hidden = true;
+  successPanel.hidden = false;
+  document.title = 'Registration Successful | Illuminate Verification';
+  successPanel.querySelector('#success-title').focus();
+});
+
+getQrCodeButton.addEventListener('click', () => {
+  qrCode.innerHTML = '';
+  const pattern = [
+    '11111010010111111', '10001011110110001', '10101010100110101',
+    '10101001110110101', '10001011010110001', '11111010101011111',
+    '00000001101100000', '11010110110010110', '01101101001101101',
+    '10110011110110011', '01001100101001100', '00000010110110000',
+    '11111010001110111', '10001011101010001', '10101000110110101',
+    '10101011010110101', '10001001100110001', '11111010101011111'
+  ];
+  pattern.forEach((row, rowIndex) => {
+    [...row].forEach((cell, columnIndex) => {
+      if (cell === '1') {
+        const block = document.createElement('span');
+        block.style.gridRow = rowIndex + 1;
+        block.style.gridColumn = columnIndex + 1;
+        qrCode.appendChild(block);
+      }
+    });
+  });
+  qrResult.hidden = false;
+  getQrCodeButton.hidden = true;
 });
 
 function showAdminLogin() {

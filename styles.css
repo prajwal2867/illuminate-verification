@@ -74,6 +74,95 @@ body::after {
   display: none;
 }
 
+.success-card {
+  position: relative;
+  width: min(100%, 500px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.success-card[hidden] {
+  display: none;
+}
+
+.success-card::before {
+  display: block;
+  height: 7px;
+  content: "";
+  background: linear-gradient(90deg, #3b9273, #7cc59c, #e4a582);
+}
+
+.success-card-content {
+  padding: 34px 40px 38px;
+}
+
+.success-confetti {
+  display: block;
+  width: min(100%, 270px);
+  height: 145px;
+  margin: -8px auto 4px;
+  object-fit: contain;
+}
+
+.success-card h1 {
+  max-width: 390px;
+  font-size: clamp(27px, 5vw, 36px);
+}
+
+.success-intro {
+  margin: 14px auto 26px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.success-intro span {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.qr-button {
+  margin-top: 4px;
+}
+
+.qr-result {
+  margin-top: 6px;
+}
+
+.qr-result[hidden] {
+  display: none;
+}
+
+.qr-code {
+  display: grid;
+  grid-template-columns: repeat(17, 8px);
+  grid-template-rows: repeat(18, 8px);
+  width: max-content;
+  margin: 0 auto;
+  padding: 12px;
+  border: 8px solid #ffffff;
+  outline: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.qr-code span {
+  background: var(--ink);
+}
+
+.qr-label {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.qr-label strong {
+  color: var(--ink);
+}
+
 .card-accent {
   height: 7px;
   background: linear-gradient(90deg, var(--accent-deep), #8193d2, #e4a582);
@@ -719,6 +808,14 @@ input[aria-invalid="true"] {
 
   .admin-card-content {
     padding: 30px 22px 26px;
+  }
+
+  .success-card {
+    border-radius: 16px;
+  }
+
+  .success-card-content {
+    padding: 28px 22px 30px;
   }
 
   .dashboard {

@@ -68,6 +68,23 @@
       </div>
     </section>
 
+    <section class="success-card" id="registration-success" hidden aria-labelledby="success-title">
+      <div class="success-card-content">
+        <img class="success-confetti" src="success%20confetti.svg" alt="" aria-hidden="true" />
+        <p class="eyebrow">Illuminate verification</p>
+        <h1 id="success-title">Your details have been registered</h1>
+        <p class="success-intro">Thanks, <span id="success-name">attendee</span>. Your event pass is ready to access.</p>
+        <button class="submit-button qr-button" id="get-qr-code" type="button">
+          <span>Get QR code</span>
+          <span class="button-arrow" aria-hidden="true">&#8594;</span>
+        </button>
+        <div class="qr-result" id="qr-result" hidden>
+          <div class="qr-code" id="qr-code" aria-label="Your event pass QR code"></div>
+          <p class="qr-label">Pass ID: <strong id="qr-pass-id"></strong></p>
+        </div>
+      </div>
+    </section>
+
     <div class="admin-overlay" id="admin-overlay" hidden>
       <section class="admin-card" aria-labelledby="admin-title">
         <button class="close-button" id="close-admin-login" type="button" aria-label="Return to registration" onclick="document.getElementById('admin-overlay').hidden = true; document.getElementById('registration-panel').hidden = false; document.getElementById('open-admin-login').focus();">&times;</button>
