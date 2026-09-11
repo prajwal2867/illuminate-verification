@@ -7,10 +7,11 @@
   "scripts": {
     "start": "node --env-file=.env server.js",
     "dev": "node --env-file=.env --watch server.js",
-    "check": "node --check server.js && node --check app.js",
+    "check": "node --check server.js && node --check app.js && node --check api/index.js",
     "admin:hash": "node scripts/create-admin-hash.js"
   },
   "dependencies": {
+    "mongodb": "^7.6.0",
     "qrcode": "^1.5.4"
   }
 }

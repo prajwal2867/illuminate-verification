@@ -5,6 +5,8 @@
 *.pem
 *.key
 admin credentials.txt
+notes --1.txt
+notes --2.txt
 
 # Dependencies and generated output
 node_modules/
